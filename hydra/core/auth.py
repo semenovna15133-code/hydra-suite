@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ip TEXT NOT NULL,
     success INTEGER NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    endpoint TEXT NOT NULL DEFAULT 'login'
 );
 CREATE TABLE IF NOT EXISTS cli_tokens (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -126,21 +127,23 @@ async def list_sessions(db):
     return await db.fetchall("SELECT * FROM sessions ORDER BY last_seen_at DESC")
 
 
-async def record_attempt(db, ip: str, success: bool) -> None:
+async def record_attempt(db, ip: str, success: bool, endpoint: str = "login") -> None:
+    """Record auth attempt. endpoint: 'login' (default) or 'redeem' (Р-27)."""
     await db.execute(
-        "INSERT INTO login_attempts (ip, success, created_at) VALUES (?, ?, ?)",
-        ip, 1 if success else 0, _now(),
+        "INSERT INTO login_attempts (ip, success, created_at, endpoint) VALUES (?, ?, ?, ?)",
+        ip, 1 if success else 0, _now(), endpoint,
     )
     await db.commit()
 
 
-async def is_rate_limited(db, ip: str) -> bool:
+async def is_rate_limited(db, ip: str, endpoint: str = "login", max_attempts: int = 5) -> bool:
+    """Check if IP is rate-limited. endpoint: 'login' (default) or 'redeem' (Р-27)."""
     cutoff = (datetime.now() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
     row = await db.fetchone(
-        "SELECT COUNT(*) AS c FROM login_attempts WHERE ip = ? AND success = 0 AND created_at > ?",
-        ip, cutoff,
+        "SELECT COUNT(*) AS c FROM login_attempts WHERE ip = ? AND success = 0 AND created_at > ? AND endpoint = ?",
+        ip, cutoff, endpoint,
     )
-    return bool(row) and row["c"] >= 5
+    return bool(row) and row["c"] >= max_attempts
 
 
 async def get_or_create_cli_token(db):

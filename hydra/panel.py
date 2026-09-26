@@ -273,16 +273,8 @@ async def agent_metrics(
     return JSONResponse(content=response, headers=headers)
 
 
-# Client redeem endpoint
-@app.post("/api/v1/client/redeem")
-async def redeem_key(data: RedeemRequest):
-    """Redeem universal key and get configs for all servers."""
-    return {
-        "status": "not_implemented",
-        "message": "Redeem logic pending - see manifest §9",
-        "key_id": data.key_id,
-        "device_id": data.device_id,
-    }
+# Client redeem endpoint (real implementation below, Р-27 rate-limit applied)
+# Stub removed: was conflicting with real implementation at line 330
 
 
 @app.get("/api/v1/client/servers")
@@ -338,9 +330,21 @@ async def redeem_key(data: RedeemRequest, request: Request):
     - Subnet collision detection (alert if 2+ subnets in 5 min)
     
     IP is read from request.remote_addr (reverse proxy forbidden).
+    
+    Security (Р-27): endpoint is public (client redeems from any network),
+    but rate-limited to prevent brute-force attacks on key_id.
     """
     # Get client IP from request (not X-Forwarded-For)
     ip = request.client.host if request.client else "0.0.0.0"
+    
+    # Security (Р-27): rate-limit per IP (10 attempts per 15 min for redeem)
+    from .core import auth as auth_module
+    is_limited = await auth_module.is_rate_limited(db, ip, endpoint="redeem", max_attempts=10)
+    if is_limited:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many redeem attempts. Try again in 15 minutes."
+        )
     
     try:
         result = await redeem_key_logic(
@@ -1868,7 +1872,7 @@ PROTOCOL_RESTART_CMDS = {
 
 PROTOCOL_LOG_CMDS = {
     "agent": '{ echo "=== hydra-agent.log (last 200) ==="; tail -200 /var/log/hydra-agent.log 2>/dev/null; echo; echo "=== cron runs (hydra) ==="; journalctl -n 300 --no-pager 2>/dev/null | grep -i hydra | tail -20; echo; echo "=== buffer status ==="; ls -la /var/lib/hydra-agent/ 2>/dev/null; wc -l /var/lib/hydra-agent/buffer.ndjson 2>/dev/null; }',
-    "wdtt": '{ echo "=== События (подключения/ошибки, без [СТАТ]) ==="; journalctl -u wdtt -n 3000 --no-pager -q | grep -v "[СТАТ]" | tail -80; echo; echo "=== Свежая статистика (последние 10) ==="; journalctl -u wdtt -n 40 --no-pager -q | grep "\[СТАТ\]" | tail -10; }',
+    "wdtt": r'{ echo "=== События (подключения/ошибки, без [СТАТ]) ==="; journalctl -u wdtt -n 3000 --no-pager -q | grep -v "[СТАТ]" | tail -80; echo; echo "=== Свежая статистика (последние 10) ==="; journalctl -u wdtt -n 40 --no-pager -q | grep "\[СТАТ\]" | tail -10; }',
     "aivpn": '{ echo "=== События (без DEBUG) ==="; journalctl -u aivpn-server -n 400 --no-pager -q | grep -v " DEBUG " | tail -100; }',
     "awg": '{ awg show awg0 2>/dev/null; echo; echo "=== dmesg (awg0) ==="; dmesg | grep awg0 | tail -100; }',
 }

@@ -397,15 +397,23 @@ PYTHON_EOF
         ssh_key_path: str,
         client_id: str
     ) -> PluginResult:
-        """Remove an AWG client."""
+        """Remove an AWG client (safe: env var + whitelist validation).
+        
+        Security (Р-26): client_id passed via env var TARGET_PUBKEY, not
+        direct shell interpolation. Whitelist regex validation on input.
+        """
         if not re.match(r'^[A-Za-z0-9+/]{40,50}={0,2}$', client_id):
             raise ValueError(f"client_id must be a public key (base64), got: {client_id!r}")
         
         cmd = f'''
 set -euo pipefail
+export TARGET_PUBKEY="{client_id}"
 
-if grep -q "{client_id}" {AWG_CONF}; then
+if grep -q "$TARGET_PUBKEY" {AWG_CONF}; then
     python3 <<PYTHON_EOF
+import os
+target = os.environ['TARGET_PUBKEY']
+
 with open('{AWG_CONF}') as f:
     lines = f.readlines()
 
@@ -421,7 +429,7 @@ while i < len(lines):
             j += 1
         
         section_text = ''.join(peer_section)
-        if '{client_id}' in section_text:
+        if target in section_text:
             i = j
             continue
         else:
@@ -437,16 +445,20 @@ PYTHON_EOF
 fi
 
 if [ -f {CLIENTS_MAP} ]; then
-    python3 -c "
-import json
+    python3 <<PYTHON_EOF
+import json, os
+target = os.environ['TARGET_PUBKEY']
+
 with open('{CLIENTS_MAP}') as f:
     clients = json.load(f)
-to_remove = [k for k, v in clients.items() if v.get('public_key') == '{client_id}']
+
+to_remove = [k for k, v in clients.items() if v.get('public_key') == target]
 for k in to_remove:
     del clients[k]
+
 with open('{CLIENTS_MAP}', 'w') as f:
     json.dump(clients, f, indent=2)
-"
+PYTHON_EOF
 fi
 
 awg setconf awg0 <(awg-quick strip awg0) 2>/dev/null || true

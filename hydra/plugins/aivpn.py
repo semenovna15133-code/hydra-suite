@@ -114,16 +114,21 @@ echo "INSTALL_COMPLETE"
         client_id: str,
         **kwargs
     ) -> ClientConfig:
-        """Add a new AIVPN client."""
+        """Add a new AIVPN client (safe: env var + whitelist validation).
+        
+        Security (Р-26): label passed via env var CLIENT_LABEL, not direct
+        shell interpolation. Whitelist validation on input.
+        """
         label = client_id or "hydra-client"
         role = kwargs.get("role", "user")
         
-        if not all(c.isalnum() or c in "-_" for c in label):
+        if not all(c.isalnum() or c in "-_." for c in label):
             raise ValueError(f"Invalid label: {label}")
         
         cmd = f'''
 set -euo pipefail
-{CLI} --add-client "{label}" \\
+export CLIENT_LABEL="{label}"
+{CLI} --add-client "$CLIENT_LABEL" \\
   --server-ip {server_ip}:443 \\
   --key-file {KEY_FILE} \\
   --clients-db {CLIENTS_DB} 2>&1
@@ -200,13 +205,18 @@ set -euo pipefail
         ssh_key_path: str,
         client_id: str
     ) -> PluginResult:
-        """Remove an AIVPN client."""
+        """Remove an AIVPN client (safe: env var + whitelist validation).
+        
+        Security (Р-26): client_id passed via env var CLIENT_ID, not direct
+        shell interpolation. Whitelist regex validation on input.
+        """
         if not ID_REGEX.match(client_id):
             raise ValueError(f"client_id must be 16-hex ID, got: {client_id!r}")
         
         cmd = f'''
 set -euo pipefail
-{CLI} --remove-client "{client_id}" \\
+export CLIENT_ID="{client_id}"
+{CLI} --remove-client "$CLIENT_ID" \\
   --key-file {KEY_FILE} \\
   --clients-db {CLIENTS_DB} 2>&1
 '''

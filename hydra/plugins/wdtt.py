@@ -123,26 +123,40 @@ echo "INSTALL_COMPLETE"
         client_id: str,
         **kwargs
     ) -> ClientConfig:
-        """Add a new WDTT client."""
+        """Add a new WDTT client (safe: run_with_stdin, no shell interpolation).
+        
+        Security (Р-26): user input (label) passed to remote command via
+        JSON stdin, not via shell interpolation. Whitelist validation on label.
+        """
         label = kwargs.get("label", "hydra-client")
         days = int(kwargs.get("days", 0))
         
-        if not all(c.isalnum() or c in "-_" for c in label):
+        # Whitelist validation (Р-26): alphanumeric + dash + underscore + dot
+        if not all(c.isalnum() or c in "-_." for c in label):
             raise ValueError(f"Invalid label: {label}")
         
-        cmd = f'''
-set -euo pipefail
-if [ ! -f /root/wdtt-main.pass ]; then
-    echo '{{"error":"password file not found"}}'
-    exit 1
-fi
-MAIN_PW=$(cat /root/wdtt-main.pass)
-JSON=$(printf '{{"main_password":"%s","args":["create","--days","%d","--label","%s"]}}' "$MAIN_PW" {days} "{label}")
-echo "$JSON" | /usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null
-'''
+        if not (0 <= days <= 36500):
+            raise ValueError(f"days must be in [0, 36500], got {days}")
         
         async with SSHTransport(server_ip, key_path=ssh_key_path) as ssh:
-            result = await ssh.run(cmd)
+            # Step 1: get main password separately
+            pw_result = await ssh.run("cat /root/wdtt-main.pass 2>/dev/null || echo ''")
+            main_pw = pw_result.stdout.strip()
+            if not main_pw:
+                raise RuntimeError("wdtt-main.pass not found or empty on server")
+            
+            # Step 2: build JSON safely (no shell interpolation)
+            req_dict = {
+                "main_password": main_pw,
+                "args": ["create", "--days", str(days), "--label", label]
+            }
+            req_json = json.dumps(req_dict)
+            
+            # Step 3: pass JSON via stdin (Р-26: run_with_stdin is safe)
+            result = await ssh.run_with_stdin(
+                "/usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null",
+                stdin_data=req_json
+            )
             
             try:
                 data = json.loads(result.stdout)
@@ -215,23 +229,33 @@ echo "$JSON" | /usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request
         ssh_key_path: str,
         client_id: str
     ) -> PluginResult:
-        """Remove a WDTT client."""
-        if len(client_id) != 16:
+        """Remove a WDTT client (safe: run_with_stdin, no shell interpolation).
+        
+        Security (Р-26): client_id passed via JSON stdin, not shell interpolation.
+        """
+        # Strict format validation: WDTT password is 16 chars
+        if len(client_id) != 16 or not client_id.isprintable():
             raise ValueError(f"client_id must be 16-char password, got: {client_id!r}")
         
-        cmd = f'''
-set -euo pipefail
-if [ ! -f /root/wdtt-main.pass ]; then
-    echo '{{"error":"password file not found"}}'
-    exit 1
-fi
-MAIN_PW=$(cat /root/wdtt-main.pass)
-JSON=$(printf '{{"main_password":"%s","args":["delete","--password","%s"]}}' "$MAIN_PW" "{client_id}")
-echo "$JSON" | /usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null
-'''
-        
         async with SSHTransport(server_ip, key_path=ssh_key_path) as ssh:
-            result = await ssh.run(cmd)
+            # Step 1: get main password separately
+            pw_result = await ssh.run("cat /root/wdtt-main.pass 2>/dev/null || echo ''")
+            main_pw = pw_result.stdout.strip()
+            if not main_pw:
+                raise RuntimeError("wdtt-main.pass not found or empty on server")
+            
+            # Step 2: build JSON safely
+            req_dict = {
+                "main_password": main_pw,
+                "args": ["delete", "--password", client_id]
+            }
+            req_json = json.dumps(req_dict)
+            
+            # Step 3: pass JSON via stdin (Р-26)
+            result = await ssh.run_with_stdin(
+                "/usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null",
+                stdin_data=req_json
+            )
             
             try:
                 data = json.loads(result.stdout)
