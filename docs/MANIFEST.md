@@ -365,6 +365,11 @@ telegram_id), /buy, /keys, /restore, /extend, /status, /devices,
         (Р-25). Emergency skip только для bootstrap с паролем.
   S-09  Auth middleware на ВСЕХ /api/v1/* endpoint'ах (Р-27). Rate-limit
         на /api/v1/client/redeem + логирование попыток.
+  S-10  TODO: если панель стоит за reverse proxy (nginx/traefik), нужно
+        использовать X-Forwarded-For для определения реального IP клиента
+        в /api/v1/client/redeem. Текущая реализация использует
+        request.client.host, что даёт только для прямого подключения.
+        Для self-hosted MVP допустимо, но зафиксировать перед продом.
 
 ═══════════════════════════════════════════════════════════════════
 ## 14. ИНФРАСТРУКТУРА

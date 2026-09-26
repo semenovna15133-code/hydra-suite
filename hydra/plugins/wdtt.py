@@ -187,20 +187,29 @@ echo "INSTALL_COMPLETE"
             )
     
     async def list_clients(self, server_ip: str, ssh_key_path: str) -> list[Dict[str, Any]]:
-        """List all WDTT clients."""
-        cmd = '''
-set -euo pipefail
-if [ ! -f /root/wdtt-main.pass ]; then
-    echo '{"error":"password file not found"}'
-    exit 1
-fi
-MAIN_PW=$(cat /root/wdtt-main.pass)
-JSON=$(printf '{"main_password":"%s","args":["list"]}' "$MAIN_PW")
-echo "$JSON" | /usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null
-'''
+        """List all WDTT clients (safe: run_with_stdin).
         
+        Security (Р-26): no shell interpolation, main_pw passed via JSON stdin.
+        """
         async with SSHTransport(server_ip, key_path=ssh_key_path) as ssh:
-            result = await ssh.run(cmd)
+            # Step 1: get main password separately
+            pw_result = await ssh.run("cat /root/wdtt-main.pass 2>/dev/null || echo ''")
+            main_pw = pw_result.stdout.strip()
+            if not main_pw:
+                return []
+            
+            # Step 2: build JSON safely
+            req_dict = {
+                "main_password": main_pw,
+                "args": ["list"]
+            }
+            req_json = json.dumps(req_dict)
+            
+            # Step 3: pass JSON via stdin (Р-26)
+            result = await ssh.run_with_stdin(
+                "/usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null",
+                stdin_data=req_json
+            )
             
             try:
                 data = json.loads(result.stdout)
@@ -268,24 +277,33 @@ echo "$JSON" | /usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request
             return PluginResult(success=True, message=f"Client {client_id} removed")
     
     async def get_status(self, server_ip: str, ssh_key_path: str) -> Dict[str, Any]:
-        """Get WDTT status via SSH."""
+        """Get WDTT status via SSH (safe: run_with_stdin).
+        
+        Security (Р-26): no shell interpolation, main_pw passed via JSON stdin.
+        """
         async with SSHTransport(server_ip, key_path=ssh_key_path) as ssh:
             status_result = await ssh.run("systemctl is-active wdtt 2>/dev/null || echo 'inactive'")
             service_status = status_result.stdout.strip()
             
-            cmd = '''
-set -e
-if [ ! -f /root/wdtt-main.pass ]; then
-    echo '{"error": "password file not found"}'
-    exit 0
-fi
-MAIN_PW=$(cat /root/wdtt-main.pass)
-JSON=$(printf '{"main_password":"%s","args":["list"]}' "$MAIN_PW")
-echo "$JSON" | /usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null || \
-  echo '{"error": "admin command failed"}'
-'''
+            # Step 1: get main password separately
+            pw_result = await ssh.run("cat /root/wdtt-main.pass 2>/dev/null || echo ''")
+            main_pw = pw_result.stdout.strip()
             
-            clients_result = await ssh.run(cmd)
+            if not main_pw:
+                clients_result = SSHResult(stdout='{"error": "password file not found"}', stderr='', exit_code=0)
+            else:
+                # Step 2: build JSON safely
+                req_dict = {
+                    "main_password": main_pw,
+                    "args": ["list"]
+                }
+                req_json = json.dumps(req_dict)
+                
+                # Step 3: pass JSON via stdin (Р-26)
+                clients_result = await ssh.run_with_stdin(
+                    "/usr/local/bin/wdtt-server admin --config-dir /etc/wdtt --request-stdin 2>/dev/null || echo '{\"error\": \"admin command failed\"}'",
+                    stdin_data=req_json
+                )
             
             try:
                 clients_data = json.loads(clients_result.stdout)

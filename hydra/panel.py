@@ -1602,8 +1602,15 @@ import asyncssh as _asyncssh
 
 
 async def _ssh_run_once(ip, port, key_path, command, password=None, timeout=8):
-    """Одноразовое SSH-подключение: пароль (bootstrap) или ключ панели."""
+    """Одноразовое SSH-подключение: пароль (bootstrap) или ключ панели.
+    
+    Security (Р-25): known_hosts=None используется ТОЛЬКО для первоначального
+    onboarding сервера, когда пароль ещё не заменён на ключ панели. Это осознанный
+    компромисс: при первом подключении нет возможности проверить хост-ключ.
+    После onboarding используется нормальный SSH с ключом и known_hosts.
+    """
     import asyncio as _aio
+    # known_hosts=None — осознанный выбор для bootstrap (Р-25)
     kwargs = {"host": ip, "port": int(port or 22), "username": "root", "known_hosts": None}
     if password:
         kwargs["password"] = password

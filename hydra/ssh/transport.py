@@ -171,4 +171,5 @@ class SSHTransport:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._conn:
             self._conn.close()
+            await self._conn.wait_closed()
             self._conn = None
