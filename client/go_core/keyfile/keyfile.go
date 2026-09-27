@@ -106,3 +106,32 @@ func Parse(path string) (*KeyFile, error) {
 
 	return kf, nil
 }
+
+// ============================================================
+// Top-level функции для gomobile (срезы и time.Time
+// gomobile не экспортирует напрямую — используем эти функции)
+// ============================================================
+
+// PeerCount возвращает количество peer'ов в ключе
+func PeerCount(k *KeyFile) int {
+	if k == nil {
+		return 0
+	}
+	return len(k.Peers)
+}
+
+// PeerAt возвращает peer по индексу (или nil если индекс вне диапазона)
+func PeerAt(k *KeyFile, index int) *Peer {
+	if k == nil || index < 0 || index >= len(k.Peers) {
+		return nil
+	}
+	return &k.Peers[index]
+}
+
+// ExpiresAtString возвращает дату истечения в читаемом формате
+func ExpiresAtString(k *KeyFile) string {
+	if k == nil {
+		return ""
+	}
+	return k.ExpiresAt.Format("2006-01-02 15:04:05")
+}

@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "dev.hydra.hydra_client"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -42,6 +42,10 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    implementation(files("libs/keyfile.aar"))
 }
 
 flutter {
