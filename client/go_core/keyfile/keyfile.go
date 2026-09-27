@@ -1,137 +1,183 @@
+// Key File v2 parser for gomobile (MANIFEST §5, docs/KEYFILE_V2.md)
 package keyfile
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
-	"time"
 )
 
-// KeyFile представляет самодостаточный файл ключа (К-05: минимум [Hydra] + >=1 Peer)
+// Touch initializes the Go runtime (required for gomobile before first call)
+func InitRuntime() {}
+
+// KeyFile represents a parsed Key File v2
 type KeyFile struct {
 	Version    int
 	KeyId      string
-	ExpiresAt  time.Time
+	ExpiresAt  string
 	MaxDevices int
 	ClientName string
-	Peers      []Peer
+	Peers      []*Peer
 }
 
-// Peer описывает один сервер/протокол из ключа
+// Peer represents a [Peer.<protocol>.<server_id>] section
 type Peer struct {
-	Protocol string // awg, wdtt, aivpn
+	Protocol string
 	ServerId string
 	Endpoint string
 	Label    string
-	// protocol-specific поля добавятся на Этапе 3b
+
+	// AWG-specific fields (added for Этап 3b-i)
+	PublicKey           string
+	PrivateKey          string
+	Address             string
+	DNS                 string
+	Jc                  string
+	Jmin                string
+	Jmax                string
+	S1                  string
+	S2                  string
+	S3                  string
+	S4                  string
+	HeaderProtectionKey string
 }
 
-// Parse читает и парсит файл ключа
-func Parse(path string) (*KeyFile, error) {
-	f, err := os.Open(path)
+// Parse reads and parses a Key File v2 from disk
+func Parse(filename string) (*KeyFile, error) {
+	file, err := os.Open(filename)
 	if err != nil {
-		return nil, fmt.Errorf("открыть файл: %w", err)
+		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer f.Close()
+	defer file.Close()
 
-	kf := &KeyFile{Peers: []Peer{}}
-	scanner := bufio.NewScanner(f)
+	kf := &KeyFile{}
+	scanner := bufio.NewScanner(file)
+
+	var currentSection string
 	var currentPeer *Peer
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+
+		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 
-		if strings.HasPrefix(line, "[Hydra]") {
+		// Section header: [Section] or [Section.subsection]
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := line[1 : len(line)-1]
+			parts := strings.SplitN(section, ".", 3)
+
+			if len(parts) == 1 {
+				currentSection = strings.ToLower(parts[0])
+				currentPeer = nil
+			} else if len(parts) == 3 && strings.ToLower(parts[0]) == "peer" {
+				currentSection = "peer"
+				currentPeer = &Peer{
+					Protocol: parts[1],
+					ServerId: parts[2],
+				}
+				kf.Peers = append(kf.Peers, currentPeer)
+			}
 			continue
 		}
 
-		if strings.HasPrefix(line, "[Peer.") && strings.HasSuffix(line, "]") {
-			// Формат: [Peer.<protocol>.<server_id>]
-			inner := strings.TrimSuffix(strings.TrimPrefix(line, "[Peer."), "]")
-			parts := strings.SplitN(inner, ".", 2)
-			if len(parts) != 2 {
-				return nil, fmt.Errorf("неверный формат секции: %s", line)
-			}
-			if currentPeer != nil {
-				kf.Peers = append(kf.Peers, *currentPeer)
-			}
-			currentPeer = &Peer{Protocol: parts[0], ServerId: parts[1]}
+		// Key = Value
+		eqIdx := strings.Index(line, "=")
+		if eqIdx < 0 {
 			continue
 		}
 
-		// Парсим key=value
-		if idx := strings.Index(line, "="); idx > 0 {
-			key := strings.TrimSpace(line[:idx])
-			value := strings.TrimSpace(line[idx+1:])
+		key := strings.TrimSpace(line[:eqIdx])
+		value := strings.TrimSpace(line[eqIdx+1:])
+		// Remove surrounding quotes if present
+		value = strings.Trim(value, `"'`)
 
+		switch currentSection {
+		case "hydra":
+			switch key {
+			case "Version":
+				fmt.Sscanf(value, "%d", &kf.Version)
+			case "KeyId":
+				kf.KeyId = value
+			case "ExpiresAt":
+				kf.ExpiresAt = value
+			case "MaxDevices":
+				fmt.Sscanf(value, "%d", &kf.MaxDevices)
+			case "ClientName":
+				kf.ClientName = value
+			}
+
+		case "peer":
 			if currentPeer == nil {
-				// Секция [Hydra]
-				switch key {
-				case "Version":
-					fmt.Sscanf(value, "%d", &kf.Version)
-				case "KeyId":
-					kf.KeyId = value
-				case "ExpiresAt":
-					if t, err := time.Parse("2006-01-02 15:04:05", value); err == nil {
-						kf.ExpiresAt = t
-					}
-				case "MaxDevices":
-					fmt.Sscanf(value, "%d", &kf.MaxDevices)
-				case "ClientName":
-					kf.ClientName = value
-				}
-			} else {
-				// Секция [Peer.*]
-				switch key {
-				case "Endpoint":
-					currentPeer.Endpoint = value
-				case "Label":
-					currentPeer.Label = strings.Trim(value, `"`)
-				}
+				continue
+			}
+			switch key {
+			case "Endpoint":
+				currentPeer.Endpoint = value
+			case "Label":
+				currentPeer.Label = value
+			// AWG-specific fields
+			case "PublicKey":
+				currentPeer.PublicKey = value
+			case "PrivateKey":
+				currentPeer.PrivateKey = value
+			case "Address":
+				currentPeer.Address = value
+			case "DNS":
+				currentPeer.DNS = value
+			case "Jc":
+				currentPeer.Jc = value
+			case "Jmin":
+				currentPeer.Jmin = value
+			case "Jmax":
+				currentPeer.Jmax = value
+			case "S1":
+				currentPeer.S1 = value
+			case "S2":
+				currentPeer.S2 = value
+			case "S3":
+				currentPeer.S3 = value
+			case "S4":
+				currentPeer.S4 = value
+			case "HeaderProtectionKey":
+				currentPeer.HeaderProtectionKey = value
 			}
 		}
 	}
 
-	if currentPeer != nil {
-		kf.Peers = append(kf.Peers, *currentPeer)
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan file: %w", err)
 	}
 
+	// Validation (К-05: минимум [Hydra] + >=1 Peer)
+	if kf.Version == 0 {
+		return nil, errors.New("missing or invalid [Hydra] section")
+	}
 	if len(kf.Peers) == 0 {
-		return nil, fmt.Errorf("минимальный ключ требует хотя бы один [Peer.*]")
+		return nil, errors.New("no [Peer.*] sections found")
 	}
 
 	return kf, nil
 }
 
-// ============================================================
-// Top-level функции для gomobile (срезы и time.Time
-// gomobile не экспортирует напрямую — используем эти функции)
-// ============================================================
-
-// PeerCount возвращает количество peer'ов в ключе
-func PeerCount(k *KeyFile) int {
-	if k == nil {
-		return 0
-	}
-	return len(k.Peers)
+// PeerCount returns the number of peers (for gomobile top-level export)
+func PeerCount(kf *KeyFile) int64 {
+	return int64(len(kf.Peers))
 }
 
-// PeerAt возвращает peer по индексу (или nil если индекс вне диапазона)
-func PeerAt(k *KeyFile, index int) *Peer {
-	if k == nil || index < 0 || index >= len(k.Peers) {
+// PeerAt returns the i-th peer (for gomobile top-level export)
+func PeerAt(kf *KeyFile, i int64) *Peer {
+	if i < 0 || i >= int64(len(kf.Peers)) {
 		return nil
 	}
-	return &k.Peers[index]
+	return kf.Peers[i]
 }
 
-// ExpiresAtString возвращает дату истечения в читаемом формате
-func ExpiresAtString(k *KeyFile) string {
-	if k == nil {
-		return ""
-	}
-	return k.ExpiresAt.Format("2006-01-02 15:04:05")
+// ExpiresAtString returns the expires_at field (for gomobile top-level export)
+func ExpiresAtString(kf *KeyFile) string {
+	return kf.ExpiresAt
 }

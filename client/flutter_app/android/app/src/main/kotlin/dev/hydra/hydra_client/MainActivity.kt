@@ -26,7 +26,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        Keyfile.touch() // инициализация Go runtime до первого вызова
+        Keyfile.initRuntime() // инициализация Go runtime до первого вызова
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -74,7 +74,7 @@ class MainActivity : FlutterActivity() {
                     result.success(prefs.getString("active_key_id", null))
                 }
 
-                "version" -> result.success("hydra-keyfile/1.1.0")
+                "version" -> result.success("hydra-keyfile/1.2.0")
 
                 else -> result.notImplemented()
             }
@@ -94,12 +94,30 @@ class MainActivity : FlutterActivity() {
         for (i in 0 until peerCount) {
             val p: Peer? = Keyfile.peerAt(kf, i.toLong())
             if (p != null) {
-                peersList.add(mapOf(
+                val peerMap = mutableMapOf<String, Any?>(
                     "protocol" to p.protocol,
                     "serverId" to p.serverId,
                     "endpoint" to p.endpoint,
                     "label" to p.label
-                ))
+                )
+                
+                // AWG-specific fields (Этап 3b-i)
+                if (p.protocol == "awg") {
+                    peerMap["publicKey"] = p.publicKey
+                    peerMap["privateKey"] = p.privateKey
+                    peerMap["address"] = p.address
+                    peerMap["dns"] = p.dns
+                    peerMap["jc"] = p.jc
+                    peerMap["jmin"] = p.jmin
+                    peerMap["jmax"] = p.jmax
+                    peerMap["s1"] = p.s1
+                    peerMap["s2"] = p.s2
+                    peerMap["s3"] = p.s3
+                    peerMap["s4"] = p.s4
+                    peerMap["headerProtectionKey"] = p.headerProtectionKey
+                }
+                
+                peersList.add(peerMap)
             }
         }
         return mapOf(
