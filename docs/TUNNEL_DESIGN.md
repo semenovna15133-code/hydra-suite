@@ -1,6 +1,6 @@
 # Hydra Client — архитектура VPN-туннеля (черновик, Этап 3b-i)
 
-Статус: ЧЕРНОВИК к обсуждению. Реализация не начата.
+Статус: РЕАЛИЗОВАНО (2026-09-28). End-to-end подтверждён.
 Ограничения-источники: MANIFEST §3 (таблица протоколов), Р-03, Р-11, 6.4, 7.5.
 
 ## Целевая схема (Р-03)
@@ -52,3 +52,10 @@ Failover (7.5): меняем SOCKS5-апстрим ПОД живым TUN — О�
 - Smart Connect / probe / score (Этап 3c)
 - Split tunneling (3c), статистика (3d), WDTT (3c), AIVPN (3b-ii)
 - Kill Switch, IPv6-настройки (9.4 — polish)
+
+## Подтверждение end-to-end (2026-09-28)
+
+- client ping 8.8.8.8 через туннель: 4/4, 0% loss, ~65ms
+- server: latest handshake 35s ago, 3.52 KiB received
+- iptables FORWARD awg0->ens3: 13 packets forwarded
+- Полное описание решённых проблем Р-01..Р-04: git log 223975c
