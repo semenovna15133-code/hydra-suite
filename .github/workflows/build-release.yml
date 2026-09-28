@@ -1,0 +1,98 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0)'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+      
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+      
+      - name: Build AAR
+        run: |
+          cd client/go_core
+          go mod download
+          gomobile init
+          gomobile bind -androidapi 21 \
+            -target=android/arm,android/arm64,android/386,android/amd64 \
+            -o keyfile.aar \
+            ./keyfile ./tunnel
+          cp keyfile.aar ../flutter_app/android/app/libs/
+      
+      - name: Build APK (debug for now, release later)
+        run: |
+          cd client/flutter_app
+          flutter pub get
+          flutter build apk --debug
+      
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="${{ github.event.inputs.version || 'dev' }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Rename APK
+        run: |
+          mv client/flutter_app/build/app/outputs/flutter-apk/app-debug.apk \
+             hydra-client-${{ steps.version.outputs.version }}.apk
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Hydra Client ${{ steps.version.outputs.version }}
+          body: |
+            ## Hydra Client ${{ steps.version.outputs.version }}
+            
+            Автоматическая сборка из ${{ github.sha }}.
+            
+            ### Установка
+            1. Скачай `hydra-client-${{ steps.version.outputs.version }}.apk`
+            2. Разреши установку из неизвестных источников
+            3. Импортируй Key File v2 через кнопку «+»
+            4. Нажми «Подключить» на карточке ключа
+            
+            ### Системные требования
+            - Android 5.0+ (API 21)
+            - Разрешение VPN при первом подключении
+          files: hydra-client-${{ steps.version.outputs.version }}.apk
+          draft: false
+          prerelease: false
