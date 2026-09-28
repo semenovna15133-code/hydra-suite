@@ -3,6 +3,8 @@ package dev.hydra.hydra_client
 import android.app.Activity
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.VpnService
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -13,9 +15,12 @@ import java.io.File
 import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "dev.hydra/keyfile"
+    private val KEYFILE_CHANNEL = "dev.hydra/keyfile"
+    private val TUNNEL_CHANNEL = "dev.hydra/tunnel"
     private val PICK_FILE_REQUEST = 1001
+    private val VPN_REQUEST_CODE = 2001
     private var pendingResult: MethodChannel.Result? = null
+    private var tunnelPendingResult: MethodChannel.Result? = null
 
     private val prefs: SharedPreferences by lazy {
         getSharedPreferences("hydra_prefs", MODE_PRIVATE)
@@ -26,9 +31,10 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        Keyfile.initRuntime() // инициализация Go runtime до первого вызова
+        Keyfile.initRuntime()
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        // === KeyFile channel ===
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, KEYFILE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickAndParseKeyFile" -> {
                     pendingResult = result
@@ -79,9 +85,96 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // === Tunnel channel ===
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TUNNEL_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startTunnel" -> {
+                    val keyId = call.argument<String>("keyId")
+                    if (keyId == null) {
+                        result.error("INVALID_ARGUMENT", "keyId required", null)
+                        return@setMethodCallHandler
+                    }
+
+                    val vpnIntent = VpnService.prepare(this)
+                    if (vpnIntent == null) {
+                        startVpnService(keyId)
+                        result.success(true)
+                    } else {
+                        tunnelPendingResult = result
+                        startActivityForResult(vpnIntent, VPN_REQUEST_CODE)
+                    }
+                }
+
+                "stopTunnel" -> {
+                    val intent = Intent(this, HydraVpnService::class.java)
+                    stopService(intent)
+                    result.success(true)
+                }
+
+                "isTunnelRunning" -> {
+                    result.success(false)
+                }
+
+                else -> result.notImplemented()
+            }
+        }
     }
 
-    // ---------- helpers ----------
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        // === KeyFile import ===
+        if (requestCode == PICK_FILE_REQUEST) {
+            if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                val uri = data.data!!
+                var tempFile: File? = null
+                try {
+                    tempFile = File.createTempFile("hydra_key", ".key", cacheDir)
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                    }
+
+                    val kf: KeyFile = Keyfile.parse(tempFile.absolutePath)
+                    val dest = File(keysDir, "${sanitizeKeyId(kf.keyId)}.key")
+                    tempFile.copyTo(dest, overwrite = true)
+
+                    if (prefs.getString("active_key_id", null) == null) {
+                        prefs.edit().putString("active_key_id", kf.keyId).apply()
+                    }
+
+                    pendingResult?.success(parseToMap(kf))
+                    pendingResult = null
+                } catch (e: Exception) {
+                    pendingResult?.error("PARSE_ERROR", e.message ?: "Unknown error", e.toString())
+                    pendingResult = null
+                } finally {
+                    tempFile?.delete()
+                }
+            } else {
+                pendingResult?.error("CANCELLED", "User cancelled", null)
+                pendingResult = null
+            }
+        }
+
+        // === VPN permission ===
+        if (requestCode == VPN_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                val keyId = prefs.getString("active_key_id", null)
+                if (keyId != null) {
+                    startVpnService(keyId)
+                    tunnelPendingResult?.success(true)
+                } else {
+                    tunnelPendingResult?.error("NO_KEY", "No active key", null)
+                }
+            } else {
+                tunnelPendingResult?.error("CANCELLED", "VPN permission denied", null)
+            }
+            tunnelPendingResult = null
+        }
+    }
+
+    // === helpers ===
 
     private fun sanitizeKeyId(raw: String): String {
         val s = raw.replace(Regex("[^A-Za-z0-9._-]"), "_").take(64)
@@ -100,8 +193,7 @@ class MainActivity : FlutterActivity() {
                     "endpoint" to p.endpoint,
                     "label" to p.label
                 )
-                
-                // AWG-specific fields (Этап 3b-i)
+
                 if (p.protocol == "awg") {
                     peerMap["publicKey"] = p.publicKey
                     peerMap["privateKey"] = p.privateKey
@@ -116,7 +208,7 @@ class MainActivity : FlutterActivity() {
                     peerMap["s4"] = p.s4
                     peerMap["headerProtectionKey"] = p.headerProtectionKey
                 }
-                
+
                 peersList.add(peerMap)
             }
         }
@@ -137,47 +229,19 @@ class MainActivity : FlutterActivity() {
             try {
                 out.add(parseToMap(Keyfile.parse(f.absolutePath)))
             } catch (_: Exception) {
-                // битый ключ пропускаем
             }
         }
         return out
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != PICK_FILE_REQUEST) return
-
-        if (resultCode == Activity.RESULT_OK && data?.data != null) {
-            val uri = data.data!!
-            var tempFile: File? = null
-            try {
-                tempFile = File.createTempFile("hydra_key", ".key", cacheDir)
-                contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output -> input.copyTo(output) }
-                }
-
-                val kf: KeyFile = Keyfile.parse(tempFile.absolutePath)
-
-                // Сохраняем в персистентное хранилище
-                val dest = File(keysDir, "${sanitizeKeyId(kf.keyId)}.key")
-                tempFile.copyTo(dest, overwrite = true)
-
-                // Первый ключ сразу делаем активным
-                if (prefs.getString("active_key_id", null) == null) {
-                    prefs.edit().putString("active_key_id", kf.keyId).apply()
-                }
-
-                pendingResult?.success(parseToMap(kf))
-                pendingResult = null
-            } catch (e: Exception) {
-                pendingResult?.error("PARSE_ERROR", e.message ?: "Unknown error", e.toString())
-                pendingResult = null
-            } finally {
-                tempFile?.delete()
-            }
+    private fun startVpnService(keyId: String) {
+        val intent = Intent(this, HydraVpnService::class.java).apply {
+            putExtra(HydraVpnService.EXTRA_KEY_ID, keyId)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
         } else {
-            pendingResult?.error("CANCELLED", "User cancelled", null)
-            pendingResult = null
+            startService(intent)
         }
     }
 }
