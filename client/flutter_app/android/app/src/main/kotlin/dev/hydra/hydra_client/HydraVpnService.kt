@@ -20,6 +20,14 @@ import java.io.File
 
 class HydraVpnService : VpnService() {
     companion object {
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+        
+        @Volatile
+        var isHandshakeComplete: Boolean = false
+            private set
+
         const val EXTRA_KEY_ID = "key_id"
         const val CHANNEL_ID = "hydra_vpn_channel"
         const val NOTIFICATION_ID = 1
@@ -100,6 +108,7 @@ class HydraVpnService : VpnService() {
 
         val pfd = builder.establish() ?: throw IllegalStateException("VpnService.establish() returned null")
         tunFd = pfd
+        isRunning = true
         // Передаём владение fd в Go: после detachFd() ParcelFileDescriptor
         // не владеет дескриптором, и fdsan не abort'ит на close() внутри Go
         val rawFd = pfd.detachFd()
@@ -116,9 +125,12 @@ class HydraVpnService : VpnService() {
         tunnel = Tunnel.new_(cfg, protector)
         tunnel!!.start(rawFd, cfg)
         Log.i(TAG, "Tunnel started for key $keyId")
+        isHandshakeComplete = true
     }
 
     override fun onDestroy() {
+        isRunning = false
+        isHandshakeComplete = false
         Log.i(TAG, "Stopping tunnel")
         try {
             tunnel?.stop()

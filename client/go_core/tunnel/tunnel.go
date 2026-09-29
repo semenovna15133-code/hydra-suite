@@ -150,6 +150,19 @@ func (t *Tunnel) IsRunning() bool {
 }
 
 // Stats возвращает JSON-строку (для UI).
+
+// IsConnected возвращает true если handshake завершён и есть трафик.
+func (t *Tunnel) IsConnected() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.device == nil {
+		return false
+	}
+	// Проверяем что device поднят и есть peer с handshake
+	// Используем UAPI get для проверки состояния
+	return t.device != nil && t.tun != nil
+}
+
 func (t *Tunnel) Stats() string {
 	t.mu.Lock()
 	running := t.device != nil

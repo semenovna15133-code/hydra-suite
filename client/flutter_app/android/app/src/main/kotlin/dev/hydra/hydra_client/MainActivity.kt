@@ -7,6 +7,11 @@ import android.net.VpnService
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import dev.hydra.hydra_client.tunnel.SmartConnectManager
+import dev.hydra.hydra_client.tunnel.AWGTunnelProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import io.flutter.plugin.common.MethodChannel
 import keyfile.Keyfile
 import keyfile.KeyFile
@@ -98,8 +103,12 @@ class MainActivity : FlutterActivity() {
 
                     val vpnIntent = VpnService.prepare(this)
                     if (vpnIntent == null) {
-                        startVpnService(keyId)
-                        result.success(true)
+                        CoroutineScope(Dispatchers.Main).launch {
+                            val provider = AWGTunnelProvider(this@MainActivity, "fi-polygon", "France · Hetzner")
+                            SmartConnectManager.registerProvider(provider)
+                            val connected = SmartConnectManager.autoConnect(this@MainActivity, keyId)
+                            result.success(connected != null)
+                        }
                     } else {
                         tunnelPendingResult = result
                         startActivityForResult(vpnIntent, VPN_REQUEST_CODE)
@@ -114,6 +123,24 @@ class MainActivity : FlutterActivity() {
 
                 "isTunnelRunning" -> {
                     result.success(false)
+                }
+                "getServerInfo" -> {
+                    val probe = SmartConnectManager.lastProbe
+                    val latency = SmartConnectManager.lastLatencyMs
+                    val info = if (probe != null && probe.udpOk) {
+                        "AmneziaWG · fi-polygon · Finland · ${latency}ms"
+                    } else {
+                        "AmneziaWG · fi-polygon · Finland"
+                    }
+                    result.success(info)
+                }
+                "getTunnelStatus" -> {
+                    val status = when {
+                        !HydraVpnService.isRunning -> "disconnected"
+                        HydraVpnService.isHandshakeComplete -> "connected"
+                        else -> "connecting"
+                    }
+                    result.success(status)
                 }
 
                 else -> result.notImplemented()
@@ -162,8 +189,12 @@ class MainActivity : FlutterActivity() {
             if (resultCode == RESULT_OK) {
                 val keyId = prefs.getString("active_key_id", null)
                 if (keyId != null) {
-                    startVpnService(keyId)
-                    tunnelPendingResult?.success(true)
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val provider = AWGTunnelProvider(this@MainActivity, "fi-polygon", "France · Hetzner")
+                        SmartConnectManager.registerProvider(provider)
+                        val connected = SmartConnectManager.autoConnect(this@MainActivity, keyId)
+                        tunnelPendingResult?.success(connected != null)
+                    }
                 } else {
                     tunnelPendingResult?.error("NO_KEY", "No active key", null)
                 }
