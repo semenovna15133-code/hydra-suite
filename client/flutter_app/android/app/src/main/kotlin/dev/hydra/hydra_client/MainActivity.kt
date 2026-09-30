@@ -138,7 +138,8 @@ class MainActivity : FlutterActivity() {
                 "getTunnelStatus" -> {
                     val status = when {
                         !HydraVpnService.isRunning -> "disconnected"
-                        HydraVpnService.isHandshakeComplete -> "connected"
+                        HydraVpnService.isHandshakeComplete &&
+                            HydraVpnService.handshakeAgeMs() in 0..180_000 -> "connected"
                         else -> "connecting"
                     }
                     result.success(status)

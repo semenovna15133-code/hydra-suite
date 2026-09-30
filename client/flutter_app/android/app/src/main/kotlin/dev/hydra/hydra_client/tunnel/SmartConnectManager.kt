@@ -49,6 +49,7 @@ object SmartConnectManager {
         best.first.connect(keyId)
         activeProvider = best.first
         
+        HealthMonitor.statusListener = { st -> ReconnectManager.onHealth(st) }
         HealthMonitor.start()
         
         return best.first

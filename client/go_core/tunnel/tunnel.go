@@ -13,6 +13,8 @@ import (
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
+	"strings"
+	"time"
 )
 
 // SocketProtector — интерфейс, реализуемый Kotlin'ом.
@@ -44,6 +46,7 @@ type Tunnel struct {
 	device    *device.Device
 	tun       *fdTun
 	protector SocketProtector
+	cfg       *Config // сохраняется для Restart (Kill Switch)
 }
 
 // New создаёт Tunnel (но не запускает).
@@ -78,25 +81,46 @@ func (t *Tunnel) Start(fd int32, cfg *Config) error {
 	if err := ft.init(); err != nil {
 		return fmt.Errorf("fdTun init: %w", err)
 	}
+	t.tun = ft
+	t.cfg = cfg
 
+	return t.startWithLocked()
+}
+
+// startWithLocked — создаёт AWG-устройство на уже инициализированном t.tun.
+// Вызывается из Start (первый запуск) и Restart (пересоздание).
+// Требует t.mu.Lock() и t.tun != nil, t.cfg != nil.
+func (t *Tunnel) startWithLocked() error {
 	logger := device.NewLogger(device.LogLevelVerbose, "awg: ")
-	dev := device.NewDevice(ft, newProtectedStdBind(t.protector), logger)
+	dev := device.NewDevice(t.tun, newProtectedStdBind(t.protector), logger)
 
-	uapi := buildUAPI(cfg)
+	uapi := buildUAPI(t.cfg)
 	if err := dev.IpcSet(uapi); err != nil {
 		dev.Close()
-		ft.Close()
 		return fmt.Errorf("IpcSet: %w", err)
 	}
 	if err := dev.Up(); err != nil {
 		dev.Close()
-		ft.Close()
 		return fmt.Errorf("Up: %w", err)
 	}
 
 	t.device = dev
-	t.tun = ft
 	return nil
+}
+
+// Restart пересоздаёт AWG-устройство под живым TUN (Kill Switch reconnect).
+// fd TUN остаётся тем же, пакеты продолжают перехватываться и дропаются
+// пока handshake не установится заново → трафик не утекает мимо VPN.
+func (t *Tunnel) Restart() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.device == nil || t.tun == nil || t.cfg == nil {
+		return fmt.Errorf("tunnel not started")
+	}
+	// Останавливаем старое устройство (но НЕ ft — fd TUN жив)
+	t.device.Close()
+	t.device.Wait()
+	return t.startWithLocked()
 }
 
 func buildUAPI(cfg *Config) string {
@@ -232,3 +256,31 @@ func (f *fdTun) Close() error {
 	return nil
 }
 func (f *fdTun) BatchSize() int { return 1 }
+
+// LastHandshakeMs — возраст последнего успешного handshake (мс).
+// 0 = handshake ещё не было. Используется для честного статуса connected.
+func (t *Tunnel) LastHandshakeMs() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.device == nil {
+		return -1
+	}
+	uapi, err := t.device.IpcGet()
+	if err != nil {
+		return -1
+	}
+	var sec, nsec int64
+	for _, line := range strings.Split(uapi, "\n") {
+		if v, ok := strings.CutPrefix(line, "last_handshake_time_sec="); ok {
+			fmt.Sscanf(v, "%d", &sec)
+		}
+		if v, ok := strings.CutPrefix(line, "last_handshake_time_nsec="); ok {
+			fmt.Sscanf(v, "%d", &nsec)
+		}
+	}
+	if sec == 0 {
+		return 0 // handshake не было
+	}
+	last := time.Unix(sec, nsec)
+	return time.Since(last).Milliseconds()
+}

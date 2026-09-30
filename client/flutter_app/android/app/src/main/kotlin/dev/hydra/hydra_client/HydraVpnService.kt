@@ -1,5 +1,7 @@
 package dev.hydra.hydra_client
 
+import dev.hydra.hydra_client.tunnel.ReconnectManager
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -27,6 +29,28 @@ class HydraVpnService : VpnService() {
         @Volatile
         var isHandshakeComplete: Boolean = false
             private set
+
+        @Volatile
+        var instance: HydraVpnService? = null
+            private set
+
+        /** Возраст последнего handshake (мс); -1 = туннель не запущен */
+        fun handshakeAgeMs(): Long {
+            return instance?.tunnel?.lastHandshakeMs() ?: -1
+        }
+
+        /** Пересоздать Go-туннель под живым TUN (Kill Switch reconnect) */
+        fun restartTunnel(): Boolean {
+            val svc = instance ?: return false
+            return try {
+                svc.tunnel?.restart()
+                isHandshakeComplete = false
+                true
+            } catch (e: Exception) {
+                android.util.Log.e("HydraVpnService", "restartTunnel failed", e)
+                false
+            }
+        }
 
         const val EXTRA_KEY_ID = "key_id"
         const val CHANNEL_ID = "hydra_vpn_channel"
@@ -131,6 +155,7 @@ class HydraVpnService : VpnService() {
     override fun onDestroy() {
         isRunning = false
         isHandshakeComplete = false
+        instance = null
         Log.i(TAG, "Stopping tunnel")
         try {
             tunnel?.stop()
