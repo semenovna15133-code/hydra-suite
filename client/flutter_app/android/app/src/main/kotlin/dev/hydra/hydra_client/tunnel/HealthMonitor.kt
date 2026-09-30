@@ -13,6 +13,10 @@ object HealthMonitor {
     
     private var job: Job? = null
     private var failCount = 0
+
+    @Volatile
+    var lastRttMs: Long = 0
+        private set
     var statusListener: ((HealthStatus) -> Unit)? = null
     
     enum class HealthStatus {
@@ -49,9 +53,11 @@ object HealthMonitor {
     
     private fun pingThroughTunnel(): Boolean {
         return try {
+            val start = System.currentTimeMillis()
             val socket = Socket()
             socket.connect(InetSocketAddress("8.8.8.8", 53), PING_TIMEOUT_MS)
             socket.close()
+            lastRttMs = System.currentTimeMillis() - start
             true
         } catch (e: Exception) {
             Log.w(TAG, "Ping failed: ${e.message}")

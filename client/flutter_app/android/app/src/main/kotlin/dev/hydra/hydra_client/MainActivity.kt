@@ -8,6 +8,7 @@ import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import dev.hydra.hydra_client.tunnel.SmartConnectManager
+import dev.hydra.hydra_client.tunnel.HealthMonitor
 import dev.hydra.hydra_client.tunnel.AWGTunnelProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,10 +126,10 @@ class MainActivity : FlutterActivity() {
                     result.success(false)
                 }
                 "getServerInfo" -> {
-                    val probe = SmartConnectManager.lastProbe
-                    val latency = SmartConnectManager.lastLatencyMs
-                    val info = if (probe != null && probe.udpOk) {
-                        "AmneziaWG · fi-polygon · Finland · ${latency}ms"
+                    // Реальный RTT через туннель (HealthMonitor), не probe-таймаут
+                    val rtt = HealthMonitor.lastRttMs
+                    val info = if (rtt > 0) {
+                        "AmneziaWG · fi-polygon · Finland · ${rtt}ms"
                     } else {
                         "AmneziaWG · fi-polygon · Finland"
                     }

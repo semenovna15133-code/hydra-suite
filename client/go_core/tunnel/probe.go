@@ -3,10 +3,10 @@ package tunnel
 import (
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
-// NetworkProbeResult — результат зондирования сети (gomobile-экспортируемый)
 type NetworkProbeResult struct {
 	UdpOk       bool
 	TcpOk       bool
@@ -15,44 +15,60 @@ type NetworkProbeResult struct {
 	LatencyMs   int64
 }
 
-// ProbeNetwork — быстрая проверка сетевого окружения (MANIFEST §7.1).
-// timeoutNs — таймаут в наносекундах (gomobile не транслирует time.Duration).
+// ProbeNetwork — проверка среды (MANIFEST §7.1), Фаза 2.
+// AWG-сервер молчит на мусор, поэтому udpOk = «UDP-пакет ушёл без
+// ICMP-ошибки», а реальный latency меряется HealthMonitor'ом через туннель.
 func ProbeNetwork(endpoint string, timeoutNs int64) (*NetworkProbeResult, error) {
-	timeout := time.Duration(timeoutNs)
 	result := &NetworkProbeResult{}
 
-	// 1. UDP-прямоток к endpoint (симуляция AWG handshake)
-	start := time.Now()
-	if udpPing(endpoint, timeout) {
-		result.UdpOk = true
-		result.LatencyMs = int64(time.Since(start).Milliseconds())
-	} else if tcpConnect("google.com:443", timeout) {
-		// TCP жив, UDP мёртв → признак DPI (MANIFEST §7.2 L1)
-		result.TcpOk = true
-		result.DpiDetected = true
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		result.UdpOk = udpSendOk(endpoint, 2*time.Second)
+	}()
+
+	go func() {
+		defer wg.Done()
+		result.VkApiOk = httpGet("https://api.vk.com/method/utils.getServerTime?v=5.131", 2*time.Second)
+	}()
+
+	wg.Wait()
+
+	if !result.UdpOk {
+		// UDP не уходит совсем → проверяем TCP: жив = признак DPI (L1)
+		if tcpConnect("google.com:443", 2*time.Second) {
+			result.TcpOk = true
+			result.DpiDetected = true
+		}
 	}
-
-	// 2. VK API доступен? (П-03: wdtt в пуле / исключён)
-	result.VkApiOk = httpGet("https://api.vk.com/method/utils.getServerTime?v=5.131", timeout)
-
 	return result, nil
 }
 
-func udpPing(endpoint string, timeout time.Duration) bool {
+// udpSendOk: dial+write успешны и нет немедленной ICMP-ошибки (ECONNREFUSED).
+func udpSendOk(endpoint string, timeout time.Duration) bool {
 	conn, err := net.DialTimeout("udp", endpoint, timeout)
 	if err != nil {
 		return false
 	}
 	defer conn.Close()
-
-	conn.SetDeadline(time.Now().Add(timeout))
+	conn.SetWriteDeadline(time.Now().Add(timeout))
 	if _, err := conn.Write([]byte{0x01}); err != nil {
 		return false
 	}
+	// Короткое окно: если прилетит ICMP unreachable — Read вернёт ошибку сразу
+	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	buf := make([]byte, 64)
-	conn.SetReadDeadline(time.Now().Add(timeout))
-	_, _ = conn.Read(buf)
-	return true
+	_, err = conn.Read(buf)
+	if err != nil {
+		// timeout = норма (сервер молчит); ошибка = ICMP-отказ
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return true
+		}
+		return false
+	}
+	return true // сервер ответил — тем более ок
 }
 
 func tcpConnect(addr string, timeout time.Duration) bool {
