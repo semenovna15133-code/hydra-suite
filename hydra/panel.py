@@ -2261,10 +2261,16 @@ def render_keyfile_v2(key: dict, client_name: str, peers: list) -> str:
         f"MaxDevices = {key['max_devices']}",
         f"ClientName = {client_name}",
     ]
+    # Порты по протоколу (из ServerManager.__init__)
+    DEFAULT_PORTS = {"awg": 51820, "aivpn": 443, "wdtt": 56000}
     for proto, server_id, cfg in peers:
         lines.append("")
         lines.append(f"[Peer.{proto}.{server_id}]")
-        lines.append(f"Endpoint = {cfg['endpoint']}")
+        # Endpoint: из cfg (awg) или server_ip:port (aivpn/wdtt)
+        endpoint = cfg.get("endpoint")
+        if not endpoint:
+            endpoint = f"{cfg.get('server_ip', cfg.get('ip', '0.0.0.0'))}:{DEFAULT_PORTS.get(proto, 0)}"
+        lines.append(f"Endpoint = {endpoint}")
         lines.append(f"Label = \"{cfg.get('label', '')}\"")
         if proto == "awg":
             lines.append(f"PublicKey = {cfg['server_pub']}")
@@ -2278,4 +2284,8 @@ def render_keyfile_v2(key: dict, client_name: str, peers: list) -> str:
                     lines.append(f"{k} = {v}")
             if ob.get("HeaderProtectionKey"):
                 lines.append(f"HeaderProtectionKey = {ob['HeaderProtectionKey']}")
+        elif proto == "aivpn":
+            lines.append(f"Key = {cfg['aivpn_url']}")
+        elif proto == "wdtt":
+            lines.append(f"Password = {cfg['password']}")
     return "\n".join(lines) + "\n"

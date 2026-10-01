@@ -89,7 +89,7 @@ HELPERS = '''
 
 # === Этап 3b-i: выпуск Key File v2 (MANIFEST §5, Р-23) ===
 
-BIND_PROTOCOLS = ("awg",)  # 3b-i: AWG; 3b-ii добавит aivpn (Р-24)
+BIND_PROTOCOLS = ("awg", "aivpn", "wdtt")  # 3b-i: AWG; 3b-ii добавит aivpn (Р-24)
 
 
 def _sanitize_label(raw: str) -> str:
