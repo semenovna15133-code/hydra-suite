@@ -36,8 +36,7 @@ object HealthMonitor {
                     failCount = 0
                     lastStatus = HealthStatus.HEALTHY
                     statusListener?.invoke(HealthStatus.HEALTHY)
-                    statusListener?.invoke(HealthStatus.HEALTHY)
-                } else {
+                                    } else {
                     failCount++
                     if (failCount >= FAIL_THRESHOLD) {
                         statusListener?.invoke(HealthStatus.UNSTABLE)

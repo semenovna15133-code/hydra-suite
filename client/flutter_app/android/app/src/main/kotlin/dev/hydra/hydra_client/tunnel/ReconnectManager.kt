@@ -37,6 +37,7 @@ object ReconnectManager {
             HealthMonitor.HealthStatus.UNSTABLE -> {
                 if (state == State.STABLE) {
                     Log.w(TAG, "Tunnel unstable, scheduling reconnect")
+                    setState(State.RECONNECTING) // guard от гонки дублей
                     scheduleReconnect(delaySec = 0L)
                 }
             }
