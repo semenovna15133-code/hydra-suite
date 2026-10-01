@@ -1,6 +1,7 @@
 package dev.hydra.hydra_client
 
 import dev.hydra.hydra_client.tunnel.ReconnectManager
+import dev.hydra.hydra_client.tunnel.HealthMonitor
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -32,9 +33,16 @@ class HydraVpnService : VpnService() {
 
         @Volatile
         var instance: HydraVpnService? = null
+
+        /** true после ручного отключения из UI — блокирует авто-реконнект receiver'а */
+        @Volatile
+        var userInitiatedStop = false
             private set
 
         /** Возраст последнего handshake (мс); -1 = туннель не запущен */
+        /** JSON статистики туннеля: rx/tx bytes, session_ms */
+        fun statsJson(): String = instance?.tunnel?.stats() ?: "{}"
+
         fun handshakeAgeMs(): Long {
             return instance?.tunnel?.lastHandshakeMs() ?: -1
         }
@@ -153,7 +161,22 @@ class HydraVpnService : VpnService() {
         isHandshakeComplete = true
     }
 
-    override fun onDestroy() {
+    
+    /** Публичный метод для отключения из UI */
+    fun stop() {
+        userInitiatedStop = true
+        Log.i(TAG, "stop() called — stopping VPN service")
+        tunnel?.stop()
+        HealthMonitor.stop()
+        ReconnectManager.reset()
+        isHandshakeComplete = false
+        isRunning = false
+        instance = null
+        stopForeground(true)
+        stopSelf()
+    }
+
+override fun onDestroy() {
         isRunning = false
         isHandshakeComplete = false
         instance = null

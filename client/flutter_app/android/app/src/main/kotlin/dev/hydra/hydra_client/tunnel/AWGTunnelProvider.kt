@@ -12,6 +12,10 @@ class AWGTunnelProvider(
     override val serverId: String,
     override val label: String
 ) : TunnelProvider {
+    companion object {
+        private const val TAG = "AWGTunnelProvider"
+    }
+
     
     override val name = "AmneziaWG"
     
@@ -38,6 +42,8 @@ class AWGTunnelProvider(
     }
     
     override fun disconnect() {
+        Log.i(TAG, "Calling HydraVpnService.instance?.stop()")
+        HydraVpnService.instance?.stop()
         val intent = Intent(context, HydraVpnService::class.java)
         context.stopService(intent)
     }

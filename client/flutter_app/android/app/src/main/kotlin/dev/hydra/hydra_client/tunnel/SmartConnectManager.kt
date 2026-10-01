@@ -56,6 +56,7 @@ object SmartConnectManager {
     }
     
     fun disconnect() {
+        Log.i(TAG, "Disconnecting active provider")
         activeProvider?.disconnect()
         activeProvider = null
         HealthMonitor.stop()

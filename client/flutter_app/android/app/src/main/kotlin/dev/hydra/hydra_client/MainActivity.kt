@@ -9,6 +9,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import dev.hydra.hydra_client.tunnel.SmartConnectManager
 import dev.hydra.hydra_client.tunnel.HealthMonitor
+import dev.hydra.hydra_client.tunnel.ReconnectManager
 import dev.hydra.hydra_client.tunnel.AWGTunnelProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -135,6 +136,16 @@ class MainActivity : FlutterActivity() {
                         "AmneziaWG · fi-polygon · Finland"
                     }
                     result.success(info)
+                }
+                                "disconnect" -> {
+                    Log.i("Disconnect", "MethodChannel: disconnect called")
+                    SmartConnectManager.disconnect()
+                    HealthMonitor.stop()
+                    ReconnectManager.reset()
+                    result.success(null)
+                }
+                "getStats" -> {
+                    result.success(HydraVpnService.statsJson())
                 }
                 "getTunnelStatus" -> {
                     Log.d("TunnelStatus", "isHandshakeComplete=${HydraVpnService.isHandshakeComplete}, " +

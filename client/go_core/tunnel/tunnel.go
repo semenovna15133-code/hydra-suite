@@ -42,11 +42,12 @@ type Config struct {
 
 // Tunnel — живое подключение.
 type Tunnel struct {
-	mu        sync.Mutex
-	device    *device.Device
-	tun       *fdTun
-	protector SocketProtector
-	cfg       *Config // сохраняется для Restart (Kill Switch)
+	mu            sync.Mutex
+	device        *device.Device
+	tun           *fdTun
+	protector     SocketProtector
+	cfg           *Config
+	sessionStart  time.Time // время первого Start, сбрасывается в Stop
 }
 
 // New создаёт Tunnel (но не запускает).
@@ -83,6 +84,9 @@ func (t *Tunnel) Start(fd int32, cfg *Config) error {
 	}
 	t.tun = ft
 	t.cfg = cfg
+	if t.sessionStart.IsZero() {
+		t.sessionStart = time.Now()
+	}
 
 	return t.startWithLocked()
 }
@@ -159,6 +163,7 @@ func (t *Tunnel) Stop() {
 	if t.device != nil {
 		t.device.Close()
 		t.device = nil
+	t.sessionStart = time.Time{}
 	}
 	if t.tun != nil {
 		t.tun.Close()
@@ -189,10 +194,46 @@ func (t *Tunnel) IsConnected() bool {
 
 func (t *Tunnel) Stats() string {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	
 	running := t.device != nil
-	t.mu.Unlock()
-	s := map[string]bool{"running": running}
-	b, _ := json.Marshal(s)
+	sessMs := int64(0)
+	if running && !t.sessionStart.IsZero() {
+		sessMs = time.Since(t.sessionStart).Milliseconds()
+	}
+	
+	result := map[string]interface{}{
+		"running":    running,
+		"rx_bytes":   int64(0),
+		"tx_bytes":   int64(0),
+		"session_ms": sessMs,
+	}
+	
+	if !running {
+		b, _ := json.Marshal(result)
+		return string(b)
+	}
+	
+	// Парсим UAPI для rx_bytes/tx_bytes
+	uapi, err := t.device.IpcGet()
+	if err != nil {
+		b, _ := json.Marshal(result)
+		return string(b)
+	}
+	
+	var rx, tx int64
+	for _, line := range strings.Split(uapi, "\n") {
+		if v, ok := strings.CutPrefix(line, "rx_bytes="); ok {
+			fmt.Sscanf(v, "%d", &rx)
+		}
+		if v, ok := strings.CutPrefix(line, "tx_bytes="); ok {
+			fmt.Sscanf(v, "%d", &tx)
+		}
+	}
+	
+	result["rx_bytes"] = rx
+	result["tx_bytes"] = tx
+	b, _ := json.Marshal(result)
 	return string(b)
 }
 
