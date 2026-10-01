@@ -3,6 +3,7 @@
 package tunnel
 
 import (
+	"log"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
-	"strings"
 	"time"
 )
 
@@ -263,10 +263,12 @@ func (t *Tunnel) LastHandshakeMs() int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.device == nil {
+		log.Println("[LastHandshakeMs] device is nil, returning -1")
 		return -1
 	}
 	uapi, err := t.device.IpcGet()
 	if err != nil {
+		log.Printf("[LastHandshakeMs] IpcGet error: %v\n", err)
 		return -1
 	}
 	var sec, nsec int64
@@ -279,8 +281,9 @@ func (t *Tunnel) LastHandshakeMs() int64 {
 		}
 	}
 	if sec == 0 {
-		return 0 // handshake не было
+		return 0
 	}
 	last := time.Unix(sec, nsec)
-	return time.Since(last).Milliseconds()
+	age := time.Since(last).Milliseconds()
+	return age
 }

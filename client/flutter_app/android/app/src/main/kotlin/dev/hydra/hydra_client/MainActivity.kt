@@ -19,6 +19,7 @@ import keyfile.KeyFile
 import keyfile.Peer
 import java.io.File
 import java.io.FileOutputStream
+import android.util.Log
 
 class MainActivity : FlutterActivity() {
     private val KEYFILE_CHANNEL = "dev.hydra/keyfile"
@@ -136,10 +137,14 @@ class MainActivity : FlutterActivity() {
                     result.success(info)
                 }
                 "getTunnelStatus" -> {
+                    Log.d("TunnelStatus", "isHandshakeComplete=${HydraVpnService.isHandshakeComplete}, " +
+                        "handshakeAgeMs=${HydraVpnService.handshakeAgeMs()}, " +
+                        "lastStatus=${HealthMonitor.lastStatus}")
                     val status = when {
                         !HydraVpnService.isRunning -> "disconnected"
-                        HydraVpnService.isHandshakeComplete &&
-                            HydraVpnService.handshakeAgeMs() in 0..180_000 -> "connected"
+                        HealthMonitor.lastStatus == HealthMonitor.HealthStatus.DOWN -> "blocked"
+                        HealthMonitor.lastStatus == HealthMonitor.HealthStatus.UNSTABLE -> "unstable"
+                        HydraVpnService.handshakeAgeMs() in 0..180_000 -> "connected"
                         else -> "connecting"
                     }
                     result.success(status)

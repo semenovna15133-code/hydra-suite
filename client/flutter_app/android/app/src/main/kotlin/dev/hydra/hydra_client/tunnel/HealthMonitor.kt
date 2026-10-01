@@ -18,6 +18,10 @@ object HealthMonitor {
     var lastRttMs: Long = 0
         private set
     var statusListener: ((HealthStatus) -> Unit)? = null
+
+    @Volatile
+    var lastStatus: HealthStatus = HealthStatus.HEALTHY
+        private set
     
     enum class HealthStatus {
         HEALTHY, UNSTABLE, DOWN
@@ -30,12 +34,16 @@ object HealthMonitor {
                 val ok = pingThroughTunnel()
                 if (ok) {
                     failCount = 0
+                    lastStatus = HealthStatus.HEALTHY
+                    statusListener?.invoke(HealthStatus.HEALTHY)
                     statusListener?.invoke(HealthStatus.HEALTHY)
                 } else {
                     failCount++
                     if (failCount >= FAIL_THRESHOLD) {
                         statusListener?.invoke(HealthStatus.UNSTABLE)
                         Log.w(TAG, "Tunnel unstable after $failCount failures")
+                        lastStatus = HealthStatus.UNSTABLE
+                        statusListener?.invoke(HealthStatus.UNSTABLE)
                     }
                 }
                 delay(INTERVAL_MS)
@@ -48,6 +56,8 @@ object HealthMonitor {
         job?.cancel()
         job = null
         failCount = 0
+        lastStatus = HealthStatus.HEALTHY
+        statusListener?.invoke(HealthStatus.HEALTHY)
         Log.i(TAG, "Health monitor stopped")
     }
     

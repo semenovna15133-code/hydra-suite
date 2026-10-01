@@ -82,7 +82,7 @@ object ReconnectManager {
         if (ok) {
             // Даём handshake 5 сек, потом HealthMonitor сам подтвердит HEALTHY
             delay(5000)
-            if (HealthMonitor.lastRttMs > 0) {
+            if (dev.hydra.hydra_client.HydraVpnService.handshakeAgeMs() in 0L..15_000L) {
                 attempts = 0
                 setState(State.STABLE)
             } else {

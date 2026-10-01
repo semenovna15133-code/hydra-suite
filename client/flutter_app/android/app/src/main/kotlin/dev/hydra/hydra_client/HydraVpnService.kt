@@ -62,6 +62,7 @@ class HydraVpnService : VpnService() {
     private var tunnel: Tunnel_? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        instance = this
         if (intent?.action == "STOP") {
             stopSelf()
             return START_NOT_STICKY
