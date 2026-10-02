@@ -86,8 +86,16 @@ object Keyfile {
         return kf
     }
     
-    fun peerAt(kf: KeyFile, index: Int): Peer? {
-        return kf.peers.getOrNull(index)
+    fun peerAt(kf: KeyFile, index: Long): Peer? {
+        return kf.peers.getOrNull(index.toInt())
+    }
+    
+    fun peerCount(kf: KeyFile): Long {
+        return kf.peers.size.toLong()
+    }
+    
+    fun expiresAtString(kf: KeyFile): String {
+        return kf.expiresAt
     }
 }
 
