@@ -5,18 +5,18 @@ import (
 )
 
 var (
-	bridge       *SocksBridge
+	bridge       *SimpleSocksBridge
 	aivpnProv    *AIVPNProvider
 	wdttProv     *WDTTProvider
 )
 
 // StartBridge запускает SOCKS5 мост (вызывается из Kotlin)
-func StartBridge(tunFd int, mtu int, socksAddr string) error {
+func StartBridge(tunFd int, socksAddr string) error {
 	if bridge != nil {
-		return nil // уже запущен
+		return nil
 	}
 
-	bridge = NewSocksBridge(tunFd, uint32(mtu), socksAddr)
+	bridge = NewSimpleSocksBridge(tunFd, socksAddr)
 	if err := bridge.Start(); err != nil {
 		bridge = nil
 		return err
@@ -26,7 +26,7 @@ func StartBridge(tunFd int, mtu int, socksAddr string) error {
 	return nil
 }
 
-// StopBridge останавливает SOCKS5 мост (вызывается из Kotlin)
+// StopBridge останавливает SOCKS5 мост
 func StopBridge() {
 	if bridge != nil {
 		bridge.Stop()
@@ -35,7 +35,7 @@ func StopBridge() {
 	}
 }
 
-// StartAIVPN запускает AIVPN провайдер (вызывается из Kotlin)
+// StartAIVPN запускает AIVPN провайдер
 func StartAIVPN(binaryPath, connKey string, socksPort int) error {
 	if aivpnProv != nil {
 		return nil
