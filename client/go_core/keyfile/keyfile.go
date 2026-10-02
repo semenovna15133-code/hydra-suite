@@ -181,3 +181,66 @@ func PeerAt(kf *KeyFile, i int64) *Peer {
 func ExpiresAtString(kf *KeyFile) string {
 	return kf.ExpiresAt
 }
+
+// PeerCount возвращает количество peers в keyfile
+func PeerCount(kf *KeyFile) int {
+	if kf == nil {
+		return 0
+	}
+	return len(kf.Peers)
+}
+
+// AllPeers возвращает все peers как JSON (для Kotlin)
+func AllPeers(kf *KeyFile) string {
+	if kf == nil || len(kf.Peers) == 0 {
+		return "[]"
+	}
+
+	type peerJSON struct {
+		Protocol            string `json:"protocol"`
+		ServerID            string `json:"server_id"`
+		Endpoint            string `json:"endpoint"`
+		Label               string `json:"label"`
+		PublicKey           string `json:"public_key,omitempty"`
+		PrivateKey          string `json:"private_key,omitempty"`
+		Address             string `json:"address,omitempty"`
+		DNS                 string `json:"dns,omitempty"`
+		Jc                  int    `json:"jc,omitempty"`
+		Jmin                int    `json:"jmin,omitempty"`
+		Jmax                int    `json:"jmax,omitempty"`
+		S1                  int    `json:"s1,omitempty"`
+		S2                  int    `json:"s2,omitempty"`
+		S3                  int    `json:"s3,omitempty"`
+		S4                  int    `json:"s4,omitempty"`
+		HeaderProtectionKey string `json:"header_protection_key,omitempty"`
+		Key                 string `json:"key,omitempty"`      // AIVPN URL
+		Password            string `json:"password,omitempty"` // WDTT
+	}
+
+	peers := make([]peerJSON, len(kf.Peers))
+	for i, p := range kf.Peers {
+		peers[i] = peerJSON{
+			Protocol:            p.Protocol,
+			ServerID:            p.ServerID,
+			Endpoint:            p.Endpoint,
+			Label:               p.Label,
+			PublicKey:           p.PublicKey,
+			PrivateKey:          p.PrivateKey,
+			Address:             p.Address,
+			DNS:                 p.DNS,
+			Jc:                  p.Jc,
+			Jmin:                p.Jmin,
+			Jmax:                p.Jmax,
+			S1:                  p.S1,
+			S2:                  p.S2,
+			S3:                  p.S3,
+			S4:                  p.S4,
+			HeaderProtectionKey: p.HeaderProtectionKey,
+			Key:                 p.Key,
+			Password:            p.Password,
+		}
+	}
+
+	data, _ := json.Marshal(peers)
+	return string(data)
+}
