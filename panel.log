@@ -2,3 +2,4 @@ INFO:     Started server process [139173]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:46090 - "GET /keys/MQ4n3Wc2WkfuMvdwtN-yhhUzMhBP9doH6lW6rRUk5J0/download HTTP/1.1" 303 See Other
