@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"sync"
+	"syscall"
 
+	"golang.org/x/net/proxy"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -65,13 +67,20 @@ func (b *SocksBridge) Start() error {
 		{Destination: header.IPv4EmptySubnet, NIC: nicID},
 	})
 
+	// Устанавливаем TCP forwarder
+	tcpForwarder := tcp.NewForwarder(s, 0, 1024, b.handleTCPConnection)
+	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
+
+	// UDP forwarder (более простой — форвардим все UDP через SOCKS5)
+	// TODO: реализовать UDP forwarder аналогично TCP
+
 	// Читаем из TUN fd и пишем в link endpoint
 	b.wg.Add(1)
 	go b.tunToStack()
 
-	// Обрабатываем исходящие пакеты из stack
+	// Обрабатываем исходящие пакеты из stack (для UDP)
 	b.wg.Add(1)
-	go b.stackToSocks()
+	go b.stackToSocksUDP()
 
 	log.Printf("[SocksBridge] started, upstream=%s", b.socksAddr)
 	return nil
@@ -81,7 +90,6 @@ func (b *SocksBridge) Start() error {
 func (b *SocksBridge) tunToStack() {
 	defer b.wg.Done()
 	buf := make([]byte, 1500)
-	fd := b.tunFd
 
 	for {
 		select {
@@ -90,9 +98,12 @@ func (b *SocksBridge) tunToStack() {
 		default:
 		}
 
-		n, err := read(fd, buf)
+		n, err := syscall.Read(b.tunFd, buf)
 		if err != nil {
 			if b.ctx.Err() != nil {
+				return
+			}
+			if err == io.EOF {
 				return
 			}
 			log.Printf("[SocksBridge] tun read error: %v", err)
@@ -112,8 +123,82 @@ func (b *SocksBridge) tunToStack() {
 	}
 }
 
-// stackToSocks перехватывает исходящие TCP/UDP соединения и форвардит в SOCKS5
-func (b *SocksBridge) stackToSocks() {
+// handleTCPConnection обрабатывает новое TCP соединение
+func (b *SocksBridge) handleTCPConnection(r *tcp.ForwarderRequest) {
+	// Получаем ID соединения
+	id := r.ID()
+	dstIP := net.IP(id.LocalAddress.AsSlice())
+	dstPort := id.LocalPort
+	srcIP := net.IP(id.RemoteAddress.AsSlice())
+	srcPort := id.RemotePort
+
+	log.Printf("[SocksBridge] TCP %s:%d -> %s:%d", srcIP, srcPort, dstIP, dstPort)
+
+	// Создаём waiter queue для endpoint
+	var wq waiter.Queue
+
+	// Создаём endpoint
+	ep, err := r.CreateEndpoint(&wq)
+	if err != nil {
+		log.Printf("[SocksBridge] CreateEndpoint error: %v", err)
+		r.Complete(true) // RST
+		return
+	}
+
+	// Подключаемся к SOCKS5 proxy
+	dialer, err := proxy.SOCKS5("tcp", b.socksAddr, nil, proxy.Direct)
+	if err != nil {
+		log.Printf("[SocksBridge] SOCKS5 dialer error: %v", err)
+		ep.Close()
+		r.Complete(true)
+		return
+	}
+
+	// Подключаемся к destination через SOCKS5
+	dst := fmt.Sprintf("%s:%d", dstIP, dstPort)
+	remoteConn, err := dialer.Dial("tcp", dst)
+	if err != nil {
+		log.Printf("[SocksBridge] SOCKS5 dial error: %v", err)
+		ep.Close()
+		r.Complete(true)
+		return
+	}
+
+	// Конвертируем endpoint в net.Conn
+	localConn := gonet.NewTCPConn(&wq, ep)
+
+	// Завершаем forwarder request (SYN-ACK отправлен)
+	r.Complete(false)
+
+	// Запускаем двусторонний форвардинг
+	go b.forwardTCP(localConn, remoteConn)
+}
+
+// forwardTCP форвардит данные между netstack и SOCKS5
+func (b *SocksBridge) forwardTCP(localConn, remoteConn net.Conn) {
+	defer localConn.Close()
+	defer remoteConn.Close()
+
+	done := make(chan struct{}, 2)
+
+	// local -> remote
+	go func() {
+		io.Copy(remoteConn, localConn)
+		done <- struct{}{}
+	}()
+
+	// remote -> local
+	go func() {
+		io.Copy(localConn, remoteConn)
+		done <- struct{}{}
+	}()
+
+	// Ждём завершения одного из направлений
+	<-done
+}
+
+// stackToSocksUDP перехватывает UDP пакеты и форвардит через SOCKS5 UDP ASSOCIATE
+func (b *SocksBridge) stackToSocksUDP() {
 	defer b.wg.Done()
 
 	for {
@@ -130,13 +215,17 @@ func (b *SocksBridge) stackToSocks() {
 		}
 
 		// Парсим IP заголовок
-		hdr := header.IPv4(pkt.NetworkHeader().Slice())
-		dstIP := net.IP(hdr.DestinationAddress().AsSlice())
-		srcIP := net.IP(hdr.SourceAddress().AsSlice())
+		ipHdr := header.IPv4(pkt.NetworkHeader().Slice())
+		if ipHdr.TransportProtocol() != header.UDPProtocolNumber {
+			pkt.DecRef()
+			continue
+		}
 
-		// TODO: парсить TCP/UDP заголовки и форвардить в SOCKS5
+		// TODO: форвардить UDP через SOCKS5 UDP ASSOCIATE
 		// Пока просто логируем
-		log.Printf("[SocksBridge] %s -> %s (%d bytes)", srcIP, dstIP, pkt.Size())
+		dstIP := net.IP(ipHdr.DestinationAddress().AsSlice())
+		srcIP := net.IP(ipHdr.SourceAddress().AsSlice())
+		log.Printf("[SocksBridge] UDP %s -> %s (%d bytes)", srcIP, dstIP, pkt.Size())
 		pkt.DecRef()
 	}
 }
@@ -149,9 +238,4 @@ func (b *SocksBridge) Stop() {
 		b.stack.Close()
 	}
 	log.Printf("[SocksBridge] stopped")
-}
-
-// read обёртка для системного вызова read
-func read(fd int, buf []byte) (int, error) {
-	return 0, io.EOF // TODO: реализовать через syscall или unix пакет
 }
