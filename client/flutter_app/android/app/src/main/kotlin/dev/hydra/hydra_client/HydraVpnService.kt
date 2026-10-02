@@ -71,7 +71,7 @@ class HydraVpnService : VpnService() {
     }
 
     private var tunFd: ParcelFileDescriptor? = null
-    private var multiProtocolManager: tunnel.MultiProtocolManager? = null
+    private var multiProtocolManager: dev.hydra.hydra_client.tunnel.MultiProtocolManager? = null
     private var tunnel: Tunnel_? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,7 +94,7 @@ class HydraVpnService : VpnService() {
 
         Thread {
             try {
-                startTunnel(keyId)
+                startTunnel(keyId, intent)
             } catch (e: Exception) {
                 Log.e(TAG, "Tunnel failed", e)
                 stopSelf()
@@ -104,7 +104,7 @@ class HydraVpnService : VpnService() {
         return START_STICKY
     }
 
-    private fun startTunnel(keyId: String) {
+    private fun startTunnel(keyId: String, intent: Intent?) {
         val keysDir = File(filesDir, "keys")
         val keyFile = File(keysDir, "${sanitizeKeyId(keyId)}.key")
         if (!keyFile.exists()) {
@@ -173,6 +173,37 @@ class HydraVpnService : VpnService() {
         isHandshakeComplete = true
     }
 
+    
+    private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
+        Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
+        multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
+        
+        val aivpnKey = intent?.getStringExtra(EXTRA_AIVPN_KEY) ?: ""
+        val wdttPassword = intent?.getStringExtra(EXTRA_WDTT_PASSWORD) ?: ""
+        
+        val started = when (protocol) {
+            "aivpn" -> kotlinx.coroutines.runBlocking { multiProtocolManager!!.startAivpn(aivpnKey) }
+            "wdtt" -> kotlinx.coroutines.runBlocking { multiProtocolManager!!.startWdtt("", wdttPassword) }
+            else -> false
+        }
+        
+        if (!started) throw IllegalStateException("Failed to start $protocol binary")
+        
+        val builder = Builder()
+            .addAddress("10.0.0.2", 32)
+            .addDnsServer("1.1.1.1")
+            .addRoute("0.0.0.0", 0)
+            .setMtu(1500)
+            .setSession("Hydra VPN ($protocol)")
+        
+        val pfd = builder.establish() ?: throw IllegalStateException("establish() returned null")
+        tunFd = pfd
+        isRunning = true
+        
+        multiProtocolManager!!.startBridge(pfd, protocol)
+        Log.i(TAG, "$protocol started with SOCKS5 bridge")
+        isHandshakeComplete = true
+    }
     
     /** Публичный метод для отключения из UI */
     fun stop() {

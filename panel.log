@@ -6,3 +6,4 @@ INFO:     127.0.0.1:46090 - "GET /keys/MQ4n3Wc2WkfuMvdwtN-yhhUzMhBP9doH6lW6rRUk5
 INFO:     127.0.0.1:47306 - "GET / HTTP/1.1" 303 See Other
 INFO:     127.0.0.1:47322 - "GET / HTTP/1.1" 303 See Other
 INFO:     127.0.0.1:47324 - "GET /keys/MQ4n3Wc2WkfuMvdwtN-yhhUzMhBP9doH6lW6rRUk5J0/download HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:59396 - "GET /keys/MQ4n3Wc2WkfuMvdwtN-yhhUzMhBP9doH6lW6rRUk5J0/download HTTP/1.1" 303 See Other
