@@ -61,12 +61,17 @@ class HydraVpnService : VpnService() {
         }
 
         const val EXTRA_KEY_ID = "key_id"
+        const val EXTRA_PROTOCOL = "protocol"
+        const val EXTRA_AIVPN_KEY = "aivpn_key"
+        const val EXTRA_WDTT_PASSWORD = "wdtt_password"
+        const val EXTRA_ENDPOINT = "endpoint"
         const val CHANNEL_ID = "hydra_vpn_channel"
         const val NOTIFICATION_ID = 1
         private const val TAG = "HydraVpnService"
     }
 
     private var tunFd: ParcelFileDescriptor? = null
+    private var multiProtocolManager: tunnel.MultiProtocolManager? = null
     private var tunnel: Tunnel_? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -110,8 +115,15 @@ class HydraVpnService : VpnService() {
         val kf: KeyFile = Keyfile.parse(keyFile.absolutePath)
         val peer: Peer = Keyfile.peerAt(kf, 0) ?: throw IllegalStateException("No peers in key")
 
-        if (peer.protocol != "awg") {
-            throw UnsupportedOperationException("Only awg protocol supported for 3b-i, got: ${peer.protocol}")
+        val protocol = intent?.getStringExtra(EXTRA_PROTOCOL) ?: "awg"
+        
+        if (protocol == "aivpn" || protocol == "wdtt") {
+            startMultiprotocolTunnel(intent, protocol)
+            return
+        }
+        
+        if (peer.protocol != protocol) {
+            Log.w(TAG, "Protocol mismatch: intent=$protocol, keyfile=${peer.protocol}")
         }
 
         val cfg = Config().apply {
@@ -167,6 +179,7 @@ class HydraVpnService : VpnService() {
         userInitiatedStop = true
         Log.i(TAG, "stop() called — stopping VPN service")
         tunnel?.stop()
+        multiProtocolManager?.stopAll()
         HealthMonitor.stop()
         ReconnectManager.reset()
         isHandshakeComplete = false
