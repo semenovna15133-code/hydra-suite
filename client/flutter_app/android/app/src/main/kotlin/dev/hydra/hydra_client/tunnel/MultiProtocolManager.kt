@@ -26,6 +26,7 @@ class MultiProtocolManager(private val context: Context) {
     }
 
     private var aivpnProcess: Process? = null
+    private var bridgeProcess: Process? = null
     private var wdttProcess: Process? = null
     private var bridge: SocksBridge? = null
 
@@ -67,6 +68,21 @@ class MultiProtocolManager(private val context: Context) {
                 }
             }.start()
             Log.i(TAG, "AIVPN started, port=$AIVPN_SOCKS_PORT")
+            
+            // Запускаем hydra-bridge (будет ждать TUN fd через SCM_RIGHTS)
+            val bridgeBinary = extractBinary("hydra-bridge")
+            val bridgeSocket = "hydra_tun_fd"
+            val bridgeCmd = listOf(
+                bridgeBinary.absolutePath,
+                bridgeSocket,
+                "127.0.0.1:$AIVPN_SOCKS_PORT"
+            )
+            bridgeProcess = ProcessBuilder(bridgeCmd)
+                .redirectErrorStream(false)
+                .start()
+            streamToLogcat(bridgeProcess!!, "hydra-bridge")
+            Log.i(TAG, "hydra-bridge started, waiting for TUN fd via @$bridgeSocket")
+            
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start AIVPN: ${e.message}")
@@ -125,13 +141,38 @@ class MultiProtocolManager(private val context: Context) {
      * Запускает SOCKS5 bridge с указанным upstream
      */
     fun startBridge(tunFd: android.os.ParcelFileDescriptor, protocol: String) {
-        val port = when (protocol) {
-            "aivpn" -> AIVPN_SOCKS_PORT
-            "wdtt" -> WDTT_SOCKS_PORT
-            else -> throw IllegalArgumentException("Unknown protocol: $protocol")
-        }
-        bridge = SocksBridge(tunFd, "127.0.0.1", port)
-        bridge?.start()
+        // Старый SocksBridge (Kotlin-реализация) больше не используется.
+        // Теперь TUN fd передаётся в hydra-bridge через SCM_RIGHTS.
+        sendTunFd(tunFd, "hydra_tun_fd")
+    }
+    
+    private fun sendTunFd(tunFd: android.os.ParcelFileDescriptor, socketName: String) {
+        Thread {
+            try {
+                Thread.sleep(500) // ждём пока hydra-bridge начнёт слушать
+                Log.i(TAG, "Sending TUN fd=${tunFd.fd} via @$socketName")
+                
+                val client = android.net.LocalSocket()
+                client.connect(android.net.LocalSocketAddress(socketName, android.net.LocalSocketAddress.Namespace.ABSTRACT))
+                
+                val fds = intArrayOf(tunFd.fd)
+                val oob = java.nio.ByteBuffer.allocate(32)
+                // SCM_RIGHTS format: cmsg_len (4 bytes) + cmsg_level (4) + cmsg_type (4) + fd (4)
+                oob.putInt(20) // cmsg_len = 20 bytes
+                oob.putInt(1)  // SOL_SOCKET
+                oob.putInt(1)  // SCM_RIGHTS
+                oob.putInt(fds[0])
+                oob.flip()
+                
+                client.fileDescriptor = java.io.FileDescriptor()
+                client.outputStream.write(0) // dummy byte
+                client.outputStream.flush()
+                
+                Log.i(TAG, "TUN fd sent successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "sendTunFd failed: ${e.message}")
+            }
+        }.start()
     }
 
     fun stopAll() {
@@ -141,7 +182,9 @@ class MultiProtocolManager(private val context: Context) {
         aivpnProcess = null
         wdttProcess?.destroy()
         wdttProcess = null
-        Log.i(TAG, "All stopped")
+        bridgeProcess?.destroy()
+        bridgeProcess = null
+        Log.i(TAG, "All stopped (including hydra-bridge)")
     }
 
     private fun extractBinary(name: String): File {
