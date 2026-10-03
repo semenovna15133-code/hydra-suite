@@ -14,12 +14,17 @@ class AWGTunnelProvider(
 ) : TunnelProvider {
     companion object {
         private const val TAG = "AWGTunnelProvider"
+        /** true пока Go-туннель не восстановлен (gomobile broken) */
+        const val AWG_DISABLED = true
     }
 
     
     override val name = "AmneziaWG"
     
     override fun score(probe: NetworkProbeResult?): Int {
+        // AWG временно отключён (gomobile сломан) — не участвует в скоринге,
+        // чтобы Smart Connect выбирал AIVPN/WDTT
+        if (AWG_DISABLED) return 0
         if (probe == null) return 50
         // Kotlin property syntax: probe.udpOk -> probe.getUdpOk()
         return when {

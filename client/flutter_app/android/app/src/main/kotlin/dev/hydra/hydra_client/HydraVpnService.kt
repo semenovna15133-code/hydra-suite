@@ -111,20 +111,17 @@ class HydraVpnService : VpnService() {
             throw IllegalStateException("Key file not found: ${keyFile.absolutePath}")
         }
 
-        Keyfile.initRuntime()
-        val kf: KeyFile = Keyfile.parse(keyFile.absolutePath)
-        val peer: Peer = Keyfile.peerAt(kf, 0) ?: throw IllegalStateException("No peers in key")
-
         val protocol = intent?.getStringExtra(EXTRA_PROTOCOL) ?: "awg"
-        
+
         if (protocol == "aivpn" || protocol == "wdtt") {
             startMultiprotocolTunnel(intent, protocol)
             return
         }
-        
-        if (peer.protocol != protocol) {
-            Log.w(TAG, "Protocol mismatch: intent=$protocol, keyfile=${peer.protocol}")
-        }
+
+        Keyfile.initRuntime()
+        val kf: KeyFile = Keyfile.parse(keyFile.absolutePath)
+        val peer: Peer = kf.peers.firstOrNull { it.protocol == protocol }
+            ?: throw IllegalStateException("No peer for protocol $protocol in key")
 
         val cfg = Config().apply {
             privateKey = peer.privateKey
@@ -133,13 +130,13 @@ class HydraVpnService : VpnService() {
             address = peer.address
             dns = peer.dns
             mtu = 1420
-            jc = peer.jc.toLong()
-            jmin = peer.jmin.toLong()
-            jmax = peer.jmax.toLong()
-            s1 = peer.s1.toLong()
-            s2 = peer.s2.toLong()
-            s3 = peer.s3.toLong()
-            s4 = peer.s4.toLong()
+            jc = peer.jc.toLongOrNull() ?: 0
+            jmin = peer.jmin.toLongOrNull() ?: 0
+            jmax = peer.jmax.toLongOrNull() ?: 0
+            s1 = peer.s1.toLongOrNull() ?: 0
+            s2 = peer.s2.toLongOrNull() ?: 0
+            s3 = peer.s3.toLongOrNull() ?: 0
+            s4 = peer.s4.toLongOrNull() ?: 0
             headerProtectionKey = peer.headerProtectionKey
         }
 
@@ -189,8 +186,18 @@ class HydraVpnService : VpnService() {
         
         if (!started) throw IllegalStateException("Failed to start $protocol binary")
         
+        val clientIp = try {
+            val payload = aivpnKey.removePrefix("aivpn://")
+            val json = String(android.util.Base64.decode(payload, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))
+            org.json.JSONObject(json).optString("i", "10.0.0.2")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to decode client IP from aivpn key: ${e.message}")
+            "10.0.0.2"
+        }
+        Log.i(TAG, "TUN client IP: $clientIp")
+
         val builder = Builder()
-            .addAddress("10.0.0.2", 32)
+            .addAddress(clientIp, 32)
             .addDnsServer("1.1.1.1")
             .addRoute("0.0.0.0", 0)
             .setMtu(1500)

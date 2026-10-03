@@ -91,16 +91,15 @@ class MultiProtocolManager(private val context: Context) {
     }
 
     private fun extractBinary(name: String): File {
-        val outFile = File(context.filesDir, name)
-        if (!outFile.exists() || outFile.length() == 0L) {
-            context.assets.open(name).use { input ->
-                outFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
-            outFile.setExecutable(true)
-            Log.i(TAG, "Extracted binary $name (${outFile.length()} bytes)")
+        // SELinux запрещает execve из app_data_file (Android 10+),
+        // поэтому исполняемые файлы упакованы как native-библиотеки:
+        // aivpn-client -> libaivpn_client.so, wdtt-client -> libwdtt_client.so
+        val libName = "lib" + name.replace("-", "_") + ".so"
+        val native = File(context.applicationInfo.nativeLibraryDir, libName)
+        if (!native.exists()) {
+            throw IllegalStateException("Native binary not found: ${native.absolutePath}")
         }
-        return outFile
+        Log.i(TAG, "Native binary: ${native.absolutePath} (${native.length()} bytes)")
+        return native
     }
 }

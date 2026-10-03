@@ -14,6 +14,11 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     namespace = "dev.hydra.hydra_client"
 
     signingConfigs {
