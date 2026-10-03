@@ -37,8 +37,7 @@ class MultiProtocolManager(private val context: Context) {
             aivpnProcess = ProcessBuilder(listOf(
                 binary.absolutePath,
                 "--connection-key", connKey,
-                "--proxy-listen", "127.0.0.1:$AIVPN_SOCKS_PORT",
-                "--no-tun"
+                "--proxy-listen", "127.0.0.1:$AIVPN_SOCKS_PORT"
             )).redirectErrorStream(false).start()
             streamToLogcat(aivpnProcess!!, "aivpn-client")
             Log.i(TAG, "AIVPN started, port=$AIVPN_SOCKS_PORT")
