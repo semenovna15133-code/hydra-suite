@@ -149,25 +149,16 @@ class MultiProtocolManager(private val context: Context) {
     private fun sendTunFd(tunFd: android.os.ParcelFileDescriptor, socketName: String) {
         Thread {
             try {
-                Thread.sleep(500) // ждём пока hydra-bridge начнёт слушать
-                Log.i(TAG, "Sending TUN fd=${tunFd.fd} via @$socketName")
-                
+                Thread.sleep(800) // ждём пока hydra-bridge начнёт слушать @socket
+                Log.i(TAG, "Sending TUN fd via @$socketName")
                 val client = android.net.LocalSocket()
                 client.connect(android.net.LocalSocketAddress(socketName, android.net.LocalSocketAddress.Namespace.ABSTRACT))
-                
-                val fds = intArrayOf(tunFd.fd)
-                val oob = java.nio.ByteBuffer.allocate(32)
-                // SCM_RIGHTS format: cmsg_len (4 bytes) + cmsg_level (4) + cmsg_type (4) + fd (4)
-                oob.putInt(20) // cmsg_len = 20 bytes
-                oob.putInt(1)  // SOL_SOCKET
-                oob.putInt(1)  // SCM_RIGHTS
-                oob.putInt(fds[0])
-                oob.flip()
-                
-                client.fileDescriptor = java.io.FileDescriptor()
-                client.outputStream.write(0) // dummy byte
+                // Штатный API Android для SCM_RIGHTS: fd уйдёт вместе со следующей записью
+                client.setFileDescriptorsForSend(arrayOf(tunFd.fileDescriptor))
+                client.outputStream.write(1)
                 client.outputStream.flush()
-                
+                Thread.sleep(300)
+                client.close()
                 Log.i(TAG, "TUN fd sent successfully")
             } catch (e: Exception) {
                 Log.e(TAG, "sendTunFd failed: ${e.message}")
