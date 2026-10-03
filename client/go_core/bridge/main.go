@@ -78,6 +78,7 @@ func run(tunFd int) error {
 
 	linkEP, fdbasedErr := fdbased.New(&fdbased.Options{
 		FDs:            []int{tunFd},
+		WriteIPIHeaderLength: 4,
 		MTU:            1500,
 		RXChecksumOffload: true,
 		TXChecksumOffload: true,
