@@ -33,8 +33,30 @@ class MultiProtocolManager(private val context: Context) {
                 "--proxy-listen", "127.0.0.1:$AIVPN_SOCKS_PORT"
             )
             aivpnProcess = ProcessBuilder(cmd)
-                .redirectErrorStream(true)
+                .redirectErrorStream(false)
                 .start()
+            
+            // Читаем stdout в фоне
+            Thread {
+                try {
+                    aivpnProcess!!.inputStream.bufferedReader().forEachLine { line ->
+                        android.util.Log.i("[aivpn-client]", line)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d(TAG, "stdout closed")
+                }
+            }.start()
+            
+            // Читаем stderr в фоне
+            Thread {
+                try {
+                    aivpnProcess!!.errorStream.bufferedReader().forEachLine { line ->
+                        android.util.Log.e("[aivpn-client]", line)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d(TAG, "stderr closed")
+                }
+            }.start()
             Log.i(TAG, "AIVPN started, port=$AIVPN_SOCKS_PORT")
             true
         } catch (e: Exception) {
@@ -57,8 +79,30 @@ class MultiProtocolManager(private val context: Context) {
                 "--conn-password", connPassword
             )
             wdttProcess = ProcessBuilder(cmd)
-                .redirectErrorStream(true)
+                .redirectErrorStream(false)
                 .start()
+            
+            // Читаем stdout в фоне
+            Thread {
+                try {
+                    wdttProcess!!.inputStream.bufferedReader().forEachLine { line ->
+                        android.util.Log.i("[wdtt-client]", line)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d(TAG, "stdout closed")
+                }
+            }.start()
+            
+            // Читаем stderr в фоне
+            Thread {
+                try {
+                    wdttProcess!!.errorStream.bufferedReader().forEachLine { line ->
+                        android.util.Log.e("[wdtt-client]", line)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d(TAG, "stderr closed")
+                }
+            }.start()
             Log.i(TAG, "WDTT started, port=$WDTT_SOCKS_PORT")
             true
         } catch (e: Exception) {
