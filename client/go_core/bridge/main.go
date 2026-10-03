@@ -77,8 +77,10 @@ func run(tunFd int) error {
 	})
 
 	linkEP, fdbasedErr := fdbased.New(&fdbased.Options{
-		FDs: []int{tunFd},
-		MTU: 1500,
+		FDs:            []int{tunFd},
+		MTU:            1500,
+		RXChecksumOffload: true,
+		TXChecksumOffload: true,
 	})
 	if fdbasedErr != nil {
 		return fmt.Errorf("fdbased.New: %v", fdbasedErr)
@@ -88,6 +90,21 @@ func run(tunFd int) error {
 	if err := s.CreateNIC(nicID, linkEP); err != nil {
 		return fmt.Errorf("CreateNIC: %v", err)
 	}
+
+	// Назначаем IP адрес на NIC (10.0.0.5/32 из VpnService.Builder)
+	// БЕЗ ЭТОГО netstack дропает все входящие пакеты
+	addr := tcpip.ProtocolAddress{
+		Protocol:          ipv4.ProtocolNumber,
+		AddressWithPrefix: tcpip.AddressWithPrefix{
+			Address:   tcpip.AddrFrom4([4]byte{10, 0, 0, 5}),
+			PrefixLen: 32,
+		},
+	}
+	if err := s.AddProtocolAddress(nicID, addr); err != nil {
+		return fmt.Errorf("AddProtocolAddress: %v", err)
+	}
+	log.Printf("[hydra-bridge] assigned 10.0.0.5/32 to NIC %d", nicID)
+
 	s.SetRouteTable([]tcpip.Route{{
 		Destination: header.IPv4EmptySubnet,
 		NIC:         nicID,
@@ -112,7 +129,7 @@ func run(tunFd int) error {
 			local.Close()
 			return
 		}
-		log.Printf("[hydra-bridge] TCP %s -> %s", net.IP(id.RemoteAddress.AsSlice()).String(), dst)
+		log.Printf("[hydra-bridge] TCP %s:%d -> %s", net.IP(id.RemoteAddress.AsSlice()), id.RemotePort, dst)
 		go splice(local, remote)
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
@@ -135,11 +152,12 @@ func run(tunFd int) error {
 			local.Close()
 			return
 		}
+		log.Printf("[hydra-bridge] UDP DNS %s -> %s", net.IP(id.RemoteAddress.AsSlice()), dst)
 		go splice(local, remote)
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, ufwd.HandlePacket)
 
-	log.Printf("[hydra-bridge] netstack running")
+	log.Printf("[hydra-bridge] netstack running, listening for TCP/UDP")
 	select {}
 }
 
