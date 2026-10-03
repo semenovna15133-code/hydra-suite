@@ -36,9 +36,8 @@ func main() {
 	}
 	log.Printf("[hydra-bridge] got TUN fd=%d, socks5=%s", fd, socksAddr)
 
-	// DEBUG-ФАЗА: сами читаем первые пакеты из fd и логируем hex.
-	// Показывает: (а) доходят ли пакеты до fd, (б) есть ли 4-байтный PI-заголовок.
-	sniff(fd, 12*time.Second, 6)
+	// SNIFF: читаем первые 6 пакетов из fd в сыром виде
+	sniff(fd, 15*time.Second, 6)
 
 	if err := run(fd); err != nil {
 		log.Fatalf("run: %v", err)
@@ -61,7 +60,7 @@ func sniff(fd int, timeout time.Duration, maxPkts int) {
 		log.Printf("[hydra-bridge] sniff: ctl: %v", err)
 		return
 	}
-	log.Printf("[hydra-bridge] sniff: listening on fd for %s / %d pkts", timeout, maxPkts)
+	log.Printf("[hydra-bridge] sniff: waiting %s / %d pkts", timeout, maxPkts)
 	deadline := time.Now().Add(timeout)
 	buf := make([]byte, 4096)
 	got := 0
@@ -69,13 +68,11 @@ func sniff(fd int, timeout time.Duration, maxPkts int) {
 		events := make([]unix.EpollEvent, 4)
 		n, err := unix.EpollWait(epfd, events, 1000)
 		if err != nil {
-			log.Printf("[hydra-bridge] sniff: wait: %v", err)
-			break
+			continue
 		}
 		for i := 0; i < n; i++ {
 			nr, err := unix.Read(fd, buf)
 			if err != nil {
-				log.Printf("[hydra-bridge] sniff: read: %v", err)
 				continue
 			}
 			got++
@@ -157,12 +154,11 @@ func run(tunFd int) error {
 		NIC:         nicID,
 	}})
 
-	// Статистика стека каждые 5 сек: видно, доходят ли пакеты до netstack
+	// Минимальный stack stats: только dropped (есть точно)
 	go func() {
 		for range time.Tick(5 * time.Second) {
 			st := s.Stats()
-			log.Printf("[hydra-bridge] stack stats: dropped=%d",
-				st.DroppedPackets.Value())
+			log.Printf("[hydra-bridge] stack: dropped=%d", st.DroppedPackets.Value())
 		}
 	}()
 
@@ -211,7 +207,7 @@ func run(tunFd int) error {
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, ufwd.HandlePacket)
 
-	log.Printf("[hydra-bridge] netstack running, listening for TCP/UDP")
+	log.Printf("[hydra-bridge] netstack running")
 	select {}
 }
 
