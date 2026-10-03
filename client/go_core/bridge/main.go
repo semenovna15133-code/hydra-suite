@@ -26,7 +26,8 @@ func main() {
 	if len(os.Args) < 3 {
 		log.Fatal("usage: hydra-bridge <abstract-socket> <socks5-addr>")
 	}
-	sockName, socksAddr = os.Args[1], os.Args[2]
+	sockName := os.Args[1]
+	socksAddr = os.Args[2]
 
 	fd, err := recvFd(sockName)
 	if err != nil {
@@ -75,10 +76,13 @@ func run(tunFd int) error {
 		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
 	})
 
-	linkEP := fdbased.New(&fdbased.Options{
+	linkEP, fdbasedErr := fdbased.New(&fdbased.Options{
 		FDs: []int{tunFd},
 		MTU: 1500,
 	})
+	if fdbasedErr != nil {
+		return fmt.Errorf("fdbased.New: %v", fdbasedErr)
+	}
 
 	const nicID tcpip.NICID = 1
 	if err := s.CreateNIC(nicID, linkEP); err != nil {
