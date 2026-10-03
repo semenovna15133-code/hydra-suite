@@ -161,8 +161,8 @@ func run(tunFd int) error {
 	go func() {
 		for range time.Tick(5 * time.Second) {
 			st := s.Stats()
-			log.Printf("[hydra-bridge] stack stats: dropped=%d malformed=%d unknownProto=%d",
-				st.DroppedPackets.Value(), st.MalformedRcvdPackets.Value(), st.UnknownProtocolRcvdPackets.Value())
+			log.Printf("[hydra-bridge] stack stats: dropped=%d",
+				st.DroppedPackets.Value())
 		}
 	}()
 
