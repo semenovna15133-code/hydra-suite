@@ -101,6 +101,10 @@ class SocksBridge(
                 // Сейчас только логируем успешное подключение
                 Log.i(TAG, "Connected to ${ipToString(dstIP)}:$dstPort via SOCKS5")
 
+                // Считаем трафик
+                val sent = sock.getOutputStream().let { 0L } // TODO: реальный подсчёт
+                val recv = sock.getInputStream().let { 0L }
+                
                 // Закрываем (нужно реализовать полноценный forwarder)
                 sock.close()
                 activeConnections.remove(connKey)

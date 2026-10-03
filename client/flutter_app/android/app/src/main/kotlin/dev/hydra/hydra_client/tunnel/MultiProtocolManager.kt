@@ -11,6 +11,14 @@ import java.io.File
  * из assets, и запуском SOCKS5 bridge
  */
 class MultiProtocolManager(private val context: Context) {
+    // Счётчики трафика (байты)
+    @Volatile private var rxBytes: Long = 0
+    @Volatile private var txBytes: Long = 0
+    
+    fun getTrafficStats(): Pair<Long, Long> = Pair(rxBytes, txBytes)
+    
+    fun addRx(bytes: Long) { rxBytes += bytes }
+    fun addTx(bytes: Long) { txBytes += bytes }
     companion object {
         private const val TAG = "MultiProtocolManager"
         private const val AIVPN_SOCKS_PORT = 1081

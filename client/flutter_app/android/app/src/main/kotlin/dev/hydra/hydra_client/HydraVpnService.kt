@@ -44,6 +44,15 @@ class HydraVpnService : VpnService() {
         var multiProtoConnectedAt: Long = -1
             private set
 
+        /** Активный протокол в мультипротокольном режиме (aivpn/wdtt) */
+        @Volatile
+        var activeProtocol: String = ""
+            private set
+
+        fun setActiveProtocol(proto: String) {
+            activeProtocol = proto
+        }
+
         /** Вызывается из MultiProtocolManager при парсинге stdout дочернего процесса */
         fun onMultiProtoStatus(line: String) {
             if (line.contains("AIVPN-STATUS connected") || line.contains("WDTT-STATUS connected")) {
@@ -62,9 +71,9 @@ class HydraVpnService : VpnService() {
         fun statsJson(): String {
             instance?.tunnel?.let { return it.stats() }
             val at = multiProtoConnectedAt
-            return if (at > 0)
-                "{\"rx\":0,\"tx\":0,\"session_ms\":${System.currentTimeMillis() - at}}"
-            else "{}"
+            if (at <= 0) return "{}"
+            val (rx, tx) = instance?.multiProtocolManager?.getTrafficStats() ?: Pair(0L, 0L)
+            return "{\"rx\":$rx,\"tx\":$tx,\"session_ms\":${System.currentTimeMillis() - at},\"protocol\":\"$activeProtocol\"}"
         }
 
         fun handshakeAgeMs(): Long {
@@ -246,6 +255,7 @@ class HydraVpnService : VpnService() {
         
         multiProtocolManager!!.startBridge(pfd, protocol)
         Log.i(TAG, "$protocol started with SOCKS5 bridge")
+        setActiveProtocol(protocol)
         isHandshakeComplete = true
     }
     
@@ -256,6 +266,7 @@ class HydraVpnService : VpnService() {
         tunnel?.stop()
         multiProtocolManager?.stopAll()
         resetMultiProtoStatus()
+        setActiveProtocol("")
         HealthMonitor.stop()
         ReconnectManager.reset()
         isHandshakeComplete = false
