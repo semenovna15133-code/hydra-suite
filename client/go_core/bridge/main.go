@@ -1,5 +1,3 @@
-// hydra-bridge: userspace TCP/IP стек (gVisor netstack) между TUN fd и SOCKS5.
-// Получает TUN fd через unix-socket (SCM_RIGHTS) от Kotlin-сервиса.
 package main
 
 import (
@@ -28,7 +26,7 @@ func main() {
 	if len(os.Args) < 3 {
 		log.Fatal("usage: hydra-bridge <abstract-socket> <socks5-addr>")
 	}
-	sockName, socksAddr := os.Args[1], os.Args[2]
+	sockName, socksAddr = os.Args[1], os.Args[2]
 
 	fd, err := recvFd(sockName)
 	if err != nil {
@@ -41,7 +39,6 @@ func main() {
 	}
 }
 
-// recvFd: ждём подключение Kotlin-сервиса и принимаем fd через SCM_RIGHTS
 func recvFd(name string) (int, error) {
 	ln, err := net.Listen("unix", "@"+name)
 	if err != nil {
@@ -79,8 +76,8 @@ func run(tunFd int) error {
 	})
 
 	linkEP := fdbased.New(&fdbased.Options{
-		FDs:  []int{tunFd},
-		MTU:  1500,
+		FDs: []int{tunFd},
+		MTU: 1500,
 	})
 
 	const nicID tcpip.NICID = 1
@@ -92,12 +89,12 @@ func run(tunFd int) error {
 		NIC:         nicID,
 	}})
 
-	// TCP forwarder: каждое новое соединение → SOCKS5
+	// TCP forwarder
 	fwd := tcp.NewForwarder(s, 0, 256, func(r *tcp.ForwarderRequest) {
 		id := r.ID()
 		var wq waiter.Queue
-		ep, err := r.CreateEndpoint(&wq)
-		if err != nil {
+		ep, tcpErr := r.CreateEndpoint(&wq)
+		if tcpErr != nil {
 			r.Complete(true)
 			return
 		}
@@ -105,32 +102,32 @@ func run(tunFd int) error {
 		local := gonet.NewTCPConn(&wq, ep)
 
 		dst := net.JoinHostPort(net.IP(id.LocalAddress.AsSlice()).String(), fmt.Sprint(id.LocalPort))
-		remote, err := dialSocks(dst)
-		if err != nil {
-			log.Printf("[hydra-bridge] socks dial %s: %v", dst, err)
+		remote, dialErr := dialSocks(dst)
+		if dialErr != nil {
+			log.Printf("[hydra-bridge] socks dial %s: %v", dst, dialErr)
 			local.Close()
 			return
 		}
-		log.Printf("[hydra-bridge] TCP %s -> %s", net.IP(id.RemoteAddress.AsSlice()), dst)
+		log.Printf("[hydra-bridge] TCP %s -> %s", net.IP(id.RemoteAddress.AsSlice()).String(), dst)
 		go splice(local, remote)
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
 
-	// UDP: DNS (53) форвардим через SOCKS5 по TCP (DNS-over-TCP к тому же серверу)
+	// UDP forwarder (DNS only)
 	ufwd := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		id := r.ID()
 		if id.LocalPort != 53 {
-			return // остальной UDP пока дропаем
-		}
-		var wq waiter.Queue
-		ep, err := r.CreateEndpoint(&wq)
-		if err != nil {
 			return
 		}
-		local := gonet.NewUDPConn(&wq, ep)
+		var wq waiter.Queue
+		ep, udpErr := r.CreateEndpoint(&wq)
+		if udpErr != nil {
+			return
+		}
+		local := gonet.NewUDPConn(s, &wq, ep)
 		dst := net.JoinHostPort(net.IP(id.LocalAddress.AsSlice()).String(), "53")
-		remote, err := dialSocks(dst)
-		if err != nil {
+		remote, dialErr := dialSocks(dst)
+		if dialErr != nil {
 			local.Close()
 			return
 		}
