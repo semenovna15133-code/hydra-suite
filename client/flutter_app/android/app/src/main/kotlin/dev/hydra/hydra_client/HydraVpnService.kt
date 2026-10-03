@@ -73,7 +73,7 @@ class HydraVpnService : VpnService() {
             val at = multiProtoConnectedAt
             if (at <= 0) return "{}"
             val (rx, tx) = instance?.multiProtocolManager?.getTrafficStats() ?: Pair(0L, 0L)
-            return "{\"rx\":$rx,\"tx\":$tx,\"session_ms\":${System.currentTimeMillis() - at},\"protocol\":\"$activeProtocol\"}"
+            return "{\"rx_bytes\":$rx,\"tx_bytes\":$tx,\"session_ms\":${System.currentTimeMillis() - at},\"protocol\":\"$activeProtocol\"}"
         }
 
         fun handshakeAgeMs(): Long {

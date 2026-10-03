@@ -13,6 +13,9 @@ object SmartConnectManager {
     private val providers = mutableListOf<TunnelProvider>()
     private var activeProvider: TunnelProvider? = null
     
+    /** Публичный доступ к активному провайдеру (для UI) */
+    val active: TunnelProvider? get() = activeProvider
+    
     @Volatile
     var lastLatencyMs: Long = 0
         private set

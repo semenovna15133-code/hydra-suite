@@ -130,10 +130,17 @@ class MainActivity : FlutterActivity() {
                 "getServerInfo" -> {
                     // Реальный RTT через туннель (HealthMonitor), не probe-таймаут
                     val rtt = HealthMonitor.lastRttMs
+                    val prov = dev.hydra.hydra_client.tunnel.SmartConnectManager.active
+                    val protoName = prov?.name ?: "AmneziaWG"
+                    val server = prov?.serverId ?: "fi-polygon"
+                    val country = when (server.split("-").first()) {
+                        "fi" -> "Finland"; "de" -> "Germany"; "nl" -> "Netherlands"
+                        else -> server.split("-").first().uppercase()
+                    }
                     val info = if (rtt > 0) {
-                        "AmneziaWG · fi-polygon · Finland · ${rtt}ms"
+                        "$protoName · $server · $country · ${rtt}ms"
                     } else {
-                        "AmneziaWG · fi-polygon · Finland"
+                        "$protoName · $server · $country"
                     }
                     result.success(info)
                 }
