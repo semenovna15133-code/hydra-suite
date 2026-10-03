@@ -39,12 +39,38 @@ class HydraVpnService : VpnService() {
         var userInitiatedStop = false
             private set
 
+        /** Время (ms) когда мультипротокольный бинарник рапортовал connected; -1 = нет */
+        @Volatile
+        var multiProtoConnectedAt: Long = -1
+            private set
+
+        /** Вызывается из MultiProtocolManager при парсинге stdout дочернего процесса */
+        fun onMultiProtoStatus(line: String) {
+            if (line.contains("AIVPN-STATUS connected") || line.contains("WDTT-STATUS connected")) {
+                multiProtoConnectedAt = System.currentTimeMillis()
+                isHandshakeComplete = true
+                android.util.Log.i("HydraVpnService", "Multiprotocol status: CONNECTED")
+            }
+        }
+
+        fun resetMultiProtoStatus() {
+            multiProtoConnectedAt = -1
+        }
+
         /** Возраст последнего handshake (мс); -1 = туннель не запущен */
         /** JSON статистики туннеля: rx/tx bytes, session_ms */
-        fun statsJson(): String = instance?.tunnel?.stats() ?: "{}"
+        fun statsJson(): String {
+            instance?.tunnel?.let { return it.stats() }
+            val at = multiProtoConnectedAt
+            return if (at > 0)
+                "{\"rx\":0,\"tx\":0,\"session_ms\":${System.currentTimeMillis() - at}}"
+            else "{}"
+        }
 
         fun handshakeAgeMs(): Long {
-            return instance?.tunnel?.lastHandshakeMs() ?: -1
+            instance?.tunnel?.let { return it.lastHandshakeMs() }
+            val at = multiProtoConnectedAt
+            return if (at > 0) System.currentTimeMillis() - at else -1
         }
 
         /** Пересоздать Go-туннель под живым TUN (Kill Switch reconnect) */
@@ -229,6 +255,7 @@ class HydraVpnService : VpnService() {
         Log.i(TAG, "stop() called — stopping VPN service")
         tunnel?.stop()
         multiProtocolManager?.stopAll()
+        resetMultiProtoStatus()
         HealthMonitor.stop()
         ReconnectManager.reset()
         isHandshakeComplete = false

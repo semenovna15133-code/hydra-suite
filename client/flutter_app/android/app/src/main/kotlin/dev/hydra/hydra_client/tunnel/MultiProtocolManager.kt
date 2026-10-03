@@ -41,6 +41,7 @@ class MultiProtocolManager(private val context: Context) {
                 try {
                     aivpnProcess!!.inputStream.bufferedReader().forEachLine { line ->
                         android.util.Log.i("[aivpn-client]", line)
+                        if (line.contains("AIVPN-STATUS")) dev.hydra.hydra_client.HydraVpnService.onMultiProtoStatus(line)
                     }
                 } catch (e: Exception) {
                     android.util.Log.d(TAG, "stdout closed")
@@ -87,6 +88,7 @@ class MultiProtocolManager(private val context: Context) {
                 try {
                     wdttProcess!!.inputStream.bufferedReader().forEachLine { line ->
                         android.util.Log.i("[wdtt-client]", line)
+                        if (line.contains("WDTT-STATUS")) dev.hydra.hydra_client.HydraVpnService.onMultiProtoStatus(line)
                     }
                 } catch (e: Exception) {
                     android.util.Log.d(TAG, "stdout closed")
