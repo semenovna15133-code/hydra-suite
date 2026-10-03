@@ -202,6 +202,17 @@ class HydraVpnService : VpnService() {
             .addRoute("0.0.0.0", 0)
             .setMtu(1500)
             .setSession("Hydra VPN ($protocol)")
+
+        // Исключаем собственное приложение из VPN-роутинга:
+        // дочерний процесс aivpn-client имеет тот же UID, и его транспортный
+        // трафик к серверу должен идти НАПРЯМУЮ, иначе routing loop
+        // (его UDP попадает в наш TUN и возвращается в него же)
+        try {
+            builder.addDisallowedApplication(packageName)
+            Log.i(TAG, "Excluded own package from VPN routing")
+        } catch (e: Exception) {
+            Log.e(TAG, "addDisallowedApplication failed: ${e.message}")
+        }
         
         val pfd = builder.establish() ?: throw IllegalStateException("establish() returned null")
         tunFd = pfd
