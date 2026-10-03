@@ -100,7 +100,7 @@ func run(tunFd int) error {
 			PrefixLen: 32,
 		},
 	}
-	if err := s.AddProtocolAddress(nicID, addr); err != nil {
+	if err := s.AddProtocolAddress(nicID, addr, stack.AddressProperties{}); err != nil {
 		return fmt.Errorf("AddProtocolAddress: %v", err)
 	}
 	log.Printf("[hydra-bridge] assigned 10.0.0.5/32 to NIC %d", nicID)
