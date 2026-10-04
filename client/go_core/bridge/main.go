@@ -34,9 +34,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("recvFd: %v", err)
 	}
-	log.Printf("[hydra-bridge] got TUN fd=%d, socks5=%s", fd, socksAddr)
+	log.Printf("[hb] got TUN fd=%d, socks5=%s", fd, socksAddr)
 
-	// SNIFF: читаем первые 6 пакетов из fd в сыром виде
+	// SNIFF: читаем первые 6 пакетов используя poll (не epoll — seccomp)
 	sniff(fd, 15*time.Second, 6)
 
 	if err := run(fd); err != nil {
@@ -46,44 +46,49 @@ func main() {
 
 func sniff(fd int, timeout time.Duration, maxPkts int) {
 	if err := unix.SetNonblock(fd, true); err != nil {
-		log.Printf("[hydra-bridge] sniff: setnonblock: %v", err)
+		log.Printf("[hb] sniff: setnonblock: %v", err)
 		return
 	}
-	epfd, err := unix.EpollCreate1(0)
-	if err != nil {
-		log.Printf("[hydra-bridge] sniff: epoll: %v", err)
-		return
-	}
-	defer unix.Close(epfd)
-	ev := unix.EpollEvent{Events: unix.EPOLLIN, Fd: int32(fd)}
-	if err := unix.EpollCtl(epfd, unix.EPOLL_CTL_ADD, fd, &ev); err != nil {
-		log.Printf("[hydra-bridge] sniff: ctl: %v", err)
-		return
-	}
-	log.Printf("[hydra-bridge] sniff: waiting %s / %d pkts", timeout, maxPkts)
+	defer unix.SetNonblock(fd, false)
+
+	log.Printf("[hb] sniff: waiting %s / %d pkts (using poll, not epoll)", timeout, maxPkts)
 	deadline := time.Now().Add(timeout)
 	buf := make([]byte, 4096)
 	got := 0
+
 	for got < maxPkts && time.Now().Before(deadline) {
-		events := make([]unix.EpollEvent, 4)
-		n, err := unix.EpollWait(epfd, events, 1000)
+		remaining := time.Until(deadline).Milliseconds()
+		if remaining <= 0 {
+			break
+		}
+		timeoutMs := int(remaining)
+		if timeoutMs > 1000 {
+			timeoutMs = 1000
+		}
+
+		pollFds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+		n, err := unix.Poll(pollFds, timeoutMs)
 		if err != nil {
+			log.Printf("[hb] sniff: poll: %v", err)
+			break
+		}
+		if n == 0 {
 			continue
 		}
-		for i := 0; i < n; i++ {
-			nr, err := unix.Read(fd, buf)
-			if err != nil {
-				continue
-			}
-			got++
-			show := nr
-			if show > 24 {
-				show = 24
-			}
-			log.Printf("[hydra-bridge] sniff pkt#%d len=%d head=% x", got, nr, buf[:show])
+
+		nr, err := unix.Read(fd, buf)
+		if err != nil {
+			log.Printf("[hb] sniff: read: %v", err)
+			continue
 		}
+		got++
+		show := nr
+		if show > 24 {
+			show = 24
+		}
+		log.Printf("[hb] sniff pkt#%d len=%d head=% x", got, nr, buf[:show])
 	}
-	log.Printf("[hydra-bridge] sniff done: %d packets seen", got)
+	log.Printf("[hb] sniff done: %d packets seen", got)
 }
 
 func recvFd(name string) (int, error) {
@@ -147,18 +152,17 @@ func run(tunFd int) error {
 	if err := s.AddProtocolAddress(nicID, addr, stack.AddressProperties{}); err != nil {
 		return fmt.Errorf("AddProtocolAddress: %v", err)
 	}
-	log.Printf("[hydra-bridge] assigned 10.0.0.5/32 to NIC %d", nicID)
+	log.Printf("[hb] assigned 10.0.0.5/32 to NIC %d", nicID)
 
 	s.SetRouteTable([]tcpip.Route{{
 		Destination: header.IPv4EmptySubnet,
 		NIC:         nicID,
 	}})
 
-	// Минимальный stack stats: только dropped (есть точно)
 	go func() {
 		for range time.Tick(5 * time.Second) {
 			st := s.Stats()
-			log.Printf("[hydra-bridge] stack: dropped=%d", st.DroppedPackets.Value())
+			log.Printf("[hb] stack dropped=%d", st.DroppedPackets.Value())
 		}
 	}()
 
@@ -176,11 +180,11 @@ func run(tunFd int) error {
 		dst := net.JoinHostPort(net.IP(id.LocalAddress.AsSlice()).String(), fmt.Sprint(id.LocalPort))
 		remote, dialErr := dialSocks(dst)
 		if dialErr != nil {
-			log.Printf("[hydra-bridge] socks dial %s: %v", dst, dialErr)
+			log.Printf("[hb] socks dial %s: %v", dst, dialErr)
 			local.Close()
 			return
 		}
-		log.Printf("[hydra-bridge] TCP %s:%d -> %s", net.IP(id.RemoteAddress.AsSlice()), id.RemotePort, dst)
+		log.Printf("[hb] TCP %s:%d -> %s", net.IP(id.RemoteAddress.AsSlice()), id.RemotePort, dst)
 		go splice(local, remote)
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
@@ -202,12 +206,12 @@ func run(tunFd int) error {
 			local.Close()
 			return
 		}
-		log.Printf("[hydra-bridge] UDP DNS %s -> %s", net.IP(id.RemoteAddress.AsSlice()), dst)
+		log.Printf("[hb] UDP DNS %s -> %s", net.IP(id.RemoteAddress.AsSlice()), dst)
 		go splice(local, remote)
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, ufwd.HandlePacket)
 
-	log.Printf("[hydra-bridge] netstack running")
+	log.Printf("[hb] netstack running")
 	select {}
 }
 
