@@ -72,6 +72,8 @@ class MultiProtocolManager(private val context: Context) {
     }
 
     private fun startBridgeBinary(socksPort: Int) {
+        bridgeProcess?.destroy()
+        bridgeProcess = null
         val bridge = extractBinary("hydra-bridge")
         bridgeProcess = ProcessBuilder(listOf(
             bridge.absolutePath, BRIDGE_SOCKET, "127.0.0.1:$socksPort"

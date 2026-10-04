@@ -6,14 +6,15 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
 	"golang.org/x/sys/unix"
+	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
-	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
@@ -22,6 +23,83 @@ import (
 )
 
 var socksAddr string
+
+// tunEP — свой LinkEndpoint: читает fd через poll+read (проверено sniff-фазой,
+// работает под seccomp Android), пишет через unix.Write. Никакого fdbased.
+type tunEP struct {
+	fd         int
+	mu         sync.Mutex
+	attached   bool
+	dispatcher stack.NetworkDispatcher
+}
+
+func (e *tunEP) MTU() uint32                        { return 1500 }
+func (e *tunEP) Capabilities() stack.LinkEndpointCapabilities { return 0 }
+func (e *tunEP) MaxHeaderLength() uint16            { return 0 }
+func (e *tunEP) LinkAddress() tcpip.LinkAddress     { return "" }
+func (e *tunEP) GSOMaxSize() uint32                 { return 0 }
+func (e *tunEP) IsAttached() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.attached
+}
+func (e *tunEP) Wait() {}
+func (e *tunEP) ARPHardwareType() header.LinkAddrType {
+	return header.LinkAddrTypeNone
+}
+func (e *tunEP) AddHeader(*stack.PacketBuffer, tcpip.LinkAddress, tcpip.LinkAddress) {}
+func (e *tunEP) ParseHeader(*stack.PacketBuffer) header.Header { return nil }
+
+func (e *tunEP) Attach(d stack.NetworkDispatcher) {
+	e.mu.Lock()
+	e.dispatcher = d
+	e.attached = true
+	e.mu.Unlock()
+	go e.rxLoop()
+}
+
+// rxLoop: poll+read — ровно то, что sniff доказал рабочим
+func (e *tunEP) rxLoop() {
+	buf := make([]byte, 4096)
+	pfds := []unix.PollFd{{Fd: int32(e.fd), Events: unix.POLLIN}}
+	for {
+		if _, err := unix.Poll(pfds, 1000); err != nil {
+			continue
+		}
+		n, err := unix.Read(e.fd, buf)
+		if err != nil || n < 1 {
+			continue
+		}
+		var proto tcpip.NetworkProtocolNumber
+		switch buf[0] >> 4 {
+		case 4:
+			proto = ipv4.ProtocolNumber
+		default:
+			continue // IPv6 и прочее дропаем
+		}
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		pb := stack.NewPacketBuffer(stack.PacketBufferOptions{
+			Payload: buffer.MakeWithData(data),
+		})
+		e.dispatcher.DeliverNetworkPacket(proto, pb)
+		pb.DecRef()
+	}
+}
+
+// WritePackets: исходящие от netstack → пишем в TUN fd
+func (e *tunEP) WritePackets(pkts stack.PacketBufferList) (int, tcpip.Error) {
+	n := 0
+	for pkt := pkts.Front(); pkt != nil; pkt = pkt.Next() {
+		data := pkt.AsRange().ToView()
+		if _, err := unix.Write(e.fd, data); err != nil {
+			log.Printf("[hb] tun write: %v", err)
+			continue
+		}
+		n++
+	}
+	return n, nil
+}
 
 func main() {
 	if len(os.Args) < 3 {
@@ -36,59 +114,9 @@ func main() {
 	}
 	log.Printf("[hb] got TUN fd=%d, socks5=%s", fd, socksAddr)
 
-	// SNIFF: читаем первые 6 пакетов используя poll (не epoll — seccomp)
-	sniff(fd, 15*time.Second, 6)
-
 	if err := run(fd); err != nil {
 		log.Fatalf("run: %v", err)
 	}
-}
-
-func sniff(fd int, timeout time.Duration, maxPkts int) {
-	if err := unix.SetNonblock(fd, true); err != nil {
-		log.Printf("[hb] sniff: setnonblock: %v", err)
-		return
-	}
-	defer unix.SetNonblock(fd, false)
-
-	log.Printf("[hb] sniff: waiting %s / %d pkts (using poll, not epoll)", timeout, maxPkts)
-	deadline := time.Now().Add(timeout)
-	buf := make([]byte, 4096)
-	got := 0
-
-	for got < maxPkts && time.Now().Before(deadline) {
-		remaining := time.Until(deadline).Milliseconds()
-		if remaining <= 0 {
-			break
-		}
-		timeoutMs := int(remaining)
-		if timeoutMs > 1000 {
-			timeoutMs = 1000
-		}
-
-		pollFds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		n, err := unix.Poll(pollFds, timeoutMs)
-		if err != nil {
-			log.Printf("[hb] sniff: poll: %v", err)
-			break
-		}
-		if n == 0 {
-			continue
-		}
-
-		nr, err := unix.Read(fd, buf)
-		if err != nil {
-			log.Printf("[hb] sniff: read: %v", err)
-			continue
-		}
-		got++
-		show := nr
-		if show > 24 {
-			show = 24
-		}
-		log.Printf("[hb] sniff pkt#%d len=%d head=% x", got, nr, buf[:show])
-	}
-	log.Printf("[hb] sniff done: %d packets seen", got)
 }
 
 func recvFd(name string) (int, error) {
@@ -127,18 +155,9 @@ func run(tunFd int) error {
 		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
 	})
 
-	linkEP, fdbasedErr := fdbased.New(&fdbased.Options{
-		FDs:               []int{tunFd},
-		MTU:               1500,
-		RXChecksumOffload: true,
-		TXChecksumOffload: true,
-	})
-	if fdbasedErr != nil {
-		return fmt.Errorf("fdbased.New: %v", fdbasedErr)
-	}
-
 	const nicID tcpip.NICID = 1
-	if err := s.CreateNIC(nicID, linkEP); err != nil {
+	ep := &tunEP{fd: tunFd}
+	if err := s.CreateNIC(nicID, ep); err != nil {
 		return fmt.Errorf("CreateNIC: %v", err)
 	}
 
@@ -152,19 +171,12 @@ func run(tunFd int) error {
 	if err := s.AddProtocolAddress(nicID, addr, stack.AddressProperties{}); err != nil {
 		return fmt.Errorf("AddProtocolAddress: %v", err)
 	}
-	log.Printf("[hb] assigned 10.0.0.5/32 to NIC %d", nicID)
+	log.Printf("[hb] assigned 10.0.0.5/32, custom tunEP attached")
 
 	s.SetRouteTable([]tcpip.Route{{
 		Destination: header.IPv4EmptySubnet,
 		NIC:         nicID,
 	}})
-
-	go func() {
-		for range time.Tick(5 * time.Second) {
-			st := s.Stats()
-			log.Printf("[hb] stack dropped=%d", st.DroppedPackets.Value())
-		}
-	}()
 
 	fwd := tcp.NewForwarder(s, 0, 256, func(r *tcp.ForwarderRequest) {
 		id := r.ID()
@@ -211,7 +223,7 @@ func run(tunFd int) error {
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, ufwd.HandlePacket)
 
-	log.Printf("[hb] netstack running")
+	log.Printf("[hb] netstack running (custom endpoint)")
 	select {}
 }
 
