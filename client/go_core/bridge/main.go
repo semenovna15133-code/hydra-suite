@@ -14,6 +14,7 @@ import (
 )
 
 var socksAddr string
+var statsFilePath string
 var tunFd int
 
 // Статистика
@@ -35,7 +36,7 @@ func initStats() {
 			ms := int64(time.Since(sessionStart).Milliseconds())
 			statsMu.Unlock()
 						data := fmt.Sprintf("{\"rx_bytes\":%d,\"tx_bytes\":%d,\"session_ms\":%d}", rx, tx, ms)
-			os.WriteFile(""+statsFile+"", []byte(data), 0666)
+			os.WriteFile(statsFilePath, []byte(data), 0666)
 			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d", rx, tx, ms)
 		}
 	}()
@@ -69,12 +70,15 @@ var conns = make(map[string]*tcpConn)
 var connsMu sync.Mutex
 
 func main() {
-	if len(os.Args) < 4 {
+	if len(os.Args) < 3 {
 		log.Fatal("usage: hydra-bridge <abstract-socket> <socks5-addr>")
 	}
 	sockName := os.Args[1]
 	socksAddr = os.Args[2]
-	statsFile := os.Args[3]
+	statsFilePath = "/data/user/0/dev.hydra.hydra_client/files/hb_stats.json"
+	if len(os.Args) >= 4 {
+		statsFilePath = os.Args[3]
+	}
 
 	fd, err := recvFd(sockName)
 	if err != nil {
