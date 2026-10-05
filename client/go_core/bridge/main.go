@@ -13,15 +13,18 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var socksAddr string
-var statsFilePath string
-var tunFd int
+var (
+	socksAddr     string
+	tunFd         int
+	statsFilePath = "/data/user/0/dev.hydra.hydra_client/files/hb_stats.json"
+)
 
-// Статистика
 var (
 	statsMu      sync.Mutex
 	rxBytes      int64
 	txBytes      int64
+	dupCount     int64
+	retransCount int64
 	sessionStart time.Time
 )
 
@@ -31,30 +34,28 @@ func initStats() {
 		for {
 			time.Sleep(2 * time.Second)
 			statsMu.Lock()
-			rx := rxBytes
-			tx := txBytes
+			rx, tx := rxBytes, txBytes
+			dup, rt := dupCount, retransCount
 			ms := int64(time.Since(sessionStart).Milliseconds())
 			statsMu.Unlock()
-						data := fmt.Sprintf("{\"rx_bytes\":%d,\"tx_bytes\":%d,\"session_ms\":%d}", rx, tx, ms)
+			data := fmt.Sprintf("{\"rx_bytes\":%d,\"tx_bytes\":%d,\"session_ms\":%d}", rx, tx, ms)
 			os.WriteFile(statsFilePath, []byte(data), 0666)
-			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d", rx, tx, ms)
+			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d dup=%d retrans=%d", rx, tx, ms, dup, rt)
 		}
 	}()
 }
 
-func addRx(n int) {
-	statsMu.Lock()
-	rxBytes += int64(n)
-	statsMu.Unlock()
+func addRx(n int)  { statsMu.Lock(); rxBytes += int64(n); statsMu.Unlock() }
+func addTx(n int)  { statsMu.Lock(); txBytes += int64(n); statsMu.Unlock() }
+func addDup()      { statsMu.Lock(); dupCount++; statsMu.Unlock() }
+func addRetrans()  { statsMu.Lock(); retransCount++; statsMu.Unlock() }
+
+type pendSeg struct {
+	end    uint32
+	pkt    []byte
+	sentAt time.Time
 }
 
-func addTx(n int) {
-	statsMu.Lock()
-	txBytes += int64(n)
-	statsMu.Unlock()
-}
-
-// TCP соединения
 type tcpConn struct {
 	mu       sync.Mutex
 	socks    net.Conn
@@ -63,7 +64,9 @@ type tcpConn struct {
 	dstIP    net.IP
 	dstPort  uint16
 	ourSeq   uint32
-	theirSeq uint32
+	theirSeq uint32 // следующий ожидаемый от app (наш ACK-номер)
+	pending  []pendSeg
+	closed   bool
 }
 
 var conns = make(map[string]*tcpConn)
@@ -71,11 +74,10 @@ var connsMu sync.Mutex
 
 func main() {
 	if len(os.Args) < 3 {
-		log.Fatal("usage: hydra-bridge <abstract-socket> <socks5-addr>")
+		log.Fatal("usage: hydra-bridge <abstract-socket> <socks5-addr> [stats-file]")
 	}
 	sockName := os.Args[1]
 	socksAddr = os.Args[2]
-	statsFilePath = "/data/user/0/dev.hydra.hydra_client/files/hb_stats.json"
 	if len(os.Args) >= 4 {
 		statsFilePath = os.Args[3]
 	}
@@ -85,8 +87,8 @@ func main() {
 		log.Fatalf("recvFd: %v", err)
 	}
 	tunFd = fd
-	log.Printf("[hb] got TUN fd=%d, socks5=%s", fd, socksAddr)
-	log.Printf("[hb] tun2socks FULL-DUPLEX running")
+	log.Printf("[hb] got TUN fd=%d, socks5=%s, stats=%s", fd, socksAddr, statsFilePath)
+	log.Printf("[hb] tun2socks FULL-DUPLEX v2 (dedup + retransmit)")
 	initStats()
 
 	run()
@@ -171,12 +173,12 @@ func handleTCP(pkt []byte, ihl int, srcIP, dstIP net.IP) {
 	srcPort := binary.BigEndian.Uint16(pkt[ihl : ihl+2])
 	dstPort := binary.BigEndian.Uint16(pkt[ihl+2 : ihl+4])
 	seq := binary.BigEndian.Uint32(pkt[ihl+4 : ihl+8])
+	ack := binary.BigEndian.Uint32(pkt[ihl+8 : ihl+12])
 	flags := pkt[ihl+13]
 	tcpHdrLen := int(pkt[ihl+12]>>4) * 4
 
 	key := fmt.Sprintf("%s:%d-%s:%d", srcIP, srcPort, dstIP, dstPort)
 
-	// SYN: новое соединение
 	if flags&0x02 != 0 && flags&0x10 == 0 {
 		log.Printf("[hb] TCP SYN %s:%d -> %s:%d", srcIP, srcPort, dstIP, dstPort)
 		go newTCPConn(srcIP, srcPort, dstIP, dstPort, seq)
@@ -192,17 +194,35 @@ func handleTCP(pkt []byte, ihl int, srcIP, dstIP net.IP) {
 
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+	if conn.closed {
+		return
+	}
 
-	// ACK с данными: forward в SOCKS5
+	// ACK от app: снимаем подтверждённые сегменты с очереди ретрансмита
+	if flags&0x10 != 0 {
+		for len(conn.pending) > 0 && conn.pending[0].end <= ack {
+			conn.pending = conn.pending[1:]
+		}
+	}
+
+	// Данные от app: dedup по sequence
 	if flags&0x10 != 0 && len(pkt) > ihl+tcpHdrLen {
 		payload := pkt[ihl+tcpHdrLen:]
-		conn.socks.Write(payload)
-		conn.theirSeq = seq + uint32(len(payload))
+		end := seq + uint32(len(payload))
+		switch {
+		case end <= conn.theirSeq:
+			addDup() // ретрансмит от app: уже переслали в SOCKS5
+		case seq == conn.theirSeq:
+			conn.socks.Write(payload)
+			conn.theirSeq = end
+		default:
+			addDup() // дыра в последовательности: app ретрансмитит сам
+		}
 		sendTCP(conn, 0x10, nil)
 	}
 
-	// FIN/RST: закрыть
 	if flags&0x01 != 0 || flags&0x04 != 0 {
+		conn.closed = true
 		conn.socks.Close()
 		connsMu.Lock()
 		delete(conns, key)
@@ -239,20 +259,20 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 	conns[key] = conn
 	connsMu.Unlock()
 
-	// SYN-ACK
 	sendTCP(conn, 0x12, nil)
 	conn.mu.Lock()
 	conn.ourSeq++
 	conn.mu.Unlock()
 
-	// Читаем из SOCKS5, пишем в TUN
+	// Поток чтения из SOCKS5 -> TUN
 	go func() {
 		buf := make([]byte, 4096)
 		for {
-			log.Printf("[hb] socks.Read: reading...")
 			n, err := socks.Read(buf)
-			log.Printf("[hb] socks.Read: n=%d err=%v", n, err)
 			if err != nil {
+				conn.mu.Lock()
+				conn.closed = true
+				conn.mu.Unlock()
 				socks.Close()
 				connsMu.Lock()
 				delete(conns, key)
@@ -261,15 +281,48 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 			}
 			data := append([]byte{}, buf[:n]...)
 			conn.mu.Lock()
-			sendTCP(conn, 0x18, data)
-			conn.ourSeq += uint32(n)
+			if !conn.closed {
+				sendTCP(conn, 0x18, data)
+				conn.ourSeq += uint32(n)
+			}
+			conn.mu.Unlock()
+		}
+	}()
+
+	// Поток ретрансмитов: неподтверждённые >700ms шлём снова
+	go func() {
+		t := time.NewTicker(300 * time.Millisecond)
+		defer t.Stop()
+		for range t.C {
+			conn.mu.Lock()
+			if conn.closed {
+				conn.mu.Unlock()
+				return
+			}
+			now := time.Now()
+			for i := range conn.pending {
+				if now.Sub(conn.pending[i].sentAt) > 700*time.Millisecond {
+					unix.Write(tunFd, conn.pending[i].pkt)
+					addTx(len(conn.pending[i].pkt))
+					conn.pending[i].sentAt = now
+					addRetrans()
+				}
+			}
+			if len(conn.pending) > 128 {
+				conn.closed = true
+				conn.socks.Close()
+				connsMu.Lock()
+				delete(conns, key)
+				connsMu.Unlock()
+				conn.mu.Unlock()
+				return
+			}
 			conn.mu.Unlock()
 		}
 	}()
 }
 
 func sendTCP(conn *tcpConn, flags byte, payload []byte) {
-	log.Printf("[hb] sendTCP flags=0x%x payload=%d", flags, len(payload))
 	ipLen := 20 + 20 + len(payload)
 	pkt := make([]byte, ipLen)
 
@@ -291,6 +344,13 @@ func sendTCP(conn *tcpConn, flags byte, payload []byte) {
 	copy(pkt[40:], payload)
 	binary.BigEndian.PutUint16(pkt[36:38], tcpChecksum(pkt[12:20], pkt[20:]))
 
+	if len(payload) > 0 {
+		conn.pending = append(conn.pending, pendSeg{
+			end:    conn.ourSeq + uint32(len(payload)),
+			pkt:    pkt,
+			sentAt: time.Now(),
+		})
+	}
 	addTx(len(pkt))
 	unix.Write(tunFd, pkt)
 }
@@ -322,7 +382,6 @@ func handleDNS(pkt []byte, ihl int, srcIP, dstIP net.IP) {
 		return
 	}
 	resp = resp[2:n]
-	log.Printf("[hb] DNS resolved via SOCKS5 (%d bytes)", len(resp))
 
 	sendUDP(srcIP, srcPort, dstIP, dstPort, resp)
 }
