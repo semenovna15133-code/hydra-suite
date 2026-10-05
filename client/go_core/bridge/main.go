@@ -16,16 +16,51 @@ import (
 var socksAddr string
 var tunFd int
 
+// Статистика
+var (
+	statsMu      sync.Mutex
+	rxBytes      int64
+	txBytes      int64
+	sessionStart time.Time
+)
+
+func initStats() {
+	sessionStart = time.Now()
+	go func() {
+		for {
+			time.Sleep(2 * time.Second)
+			statsMu.Lock()
+			rx := rxBytes
+			tx := txBytes
+			ms := int64(time.Since(sessionStart).Milliseconds())
+			statsMu.Unlock()
+			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d", rx, tx, ms)
+		}
+	}()
+}
+
+func addRx(n int) {
+	statsMu.Lock()
+	rxBytes += int64(n)
+	statsMu.Unlock()
+}
+
+func addTx(n int) {
+	statsMu.Lock()
+	txBytes += int64(n)
+	statsMu.Unlock()
+}
+
+// TCP соединения
 type tcpConn struct {
-	mu          sync.Mutex
-	socks       net.Conn
-	srcIP       net.IP
-	srcPort     uint16
-	dstIP       net.IP
-	dstPort     uint16
-	ourSeq      uint32
-	theirSeq    uint32
-	established bool
+	mu       sync.Mutex
+	socks    net.Conn
+	srcIP    net.IP
+	srcPort  uint16
+	dstIP    net.IP
+	dstPort  uint16
+	ourSeq   uint32
+	theirSeq uint32
 }
 
 var conns = make(map[string]*tcpConn)
@@ -45,6 +80,7 @@ func main() {
 	tunFd = fd
 	log.Printf("[hb] got TUN fd=%d, socks5=%s", fd, socksAddr)
 	log.Printf("[hb] tun2socks FULL-DUPLEX running")
+	initStats()
 
 	run()
 }
@@ -91,6 +127,8 @@ func run() {
 		if err != nil || n < 20 {
 			continue
 		}
+		addRx(n)
+
 		if buf[0]>>4 != 4 {
 			continue
 		}
@@ -198,7 +236,6 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 	sendTCP(conn, 0x12, nil)
 	conn.mu.Lock()
 	conn.ourSeq++
-	conn.established = true
 	conn.mu.Unlock()
 
 	// Читаем из SOCKS5, пишем в TUN
@@ -244,6 +281,7 @@ func sendTCP(conn *tcpConn, flags byte, payload []byte) {
 	copy(pkt[40:], payload)
 	binary.BigEndian.PutUint16(pkt[36:38], tcpChecksum(pkt[12:20], pkt[20:]))
 
+	addTx(len(pkt))
 	unix.Write(tunFd, pkt)
 }
 
@@ -298,6 +336,7 @@ func sendUDP(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, payload
 	pkt[27] = 0
 	copy(pkt[28:], payload)
 
+	addTx(len(pkt))
 	unix.Write(tunFd, pkt)
 }
 

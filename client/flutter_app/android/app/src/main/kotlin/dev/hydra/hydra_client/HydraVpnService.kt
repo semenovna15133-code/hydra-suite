@@ -70,15 +70,23 @@ class HydraVpnService : VpnService() {
         /** JSON статистики туннеля: rx/tx bytes, session_ms */
         fun statsJson(): String {
             try {
-                val proc = java.io.File("/proc/net/dev").readText()
-                val tunLine = proc.lines().find { it.trim().startsWith("tun0:") }
-                if (tunLine != null) {
-                    val parts = tunLine.trim().split("\\s+".toRegex())
-                    if (parts.size >= 17) {
-                        val rxBytes = parts[1].toLongOrNull() ?: 0L
-                        val txBytes = parts[9].toLongOrNull() ?: 0L
-                        return """{"rx_bytes":$rxBytes,"tx_bytes":$txBytes}"""
-                    }
+                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "50"))
+                val output = process.inputStream.bufferedReader().readText()
+                val statsLine = output.lines().reversed().find { it.contains("[hb] stats") }
+                if (statsLine != null) {
+                    val rxMatch = Regex("rx_bytes=(\\d+)").find(statsLine)
+                    val txMatch = Regex("tx_bytes=(\\d+)").find(statsLine)
+                    val msMatch = Regex("session_ms=(\\d+)").find(statsLine)
+                    val rx = rxMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    val tx = txMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    val ms = msMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    return """{"rx_bytes":$rx,"tx_bytes":$tx,"session_ms":$ms}"""
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("HydraVpnService", "statsJson error: ${e.message}")
+            }
+            return """{"rx_bytes":0,"tx_bytes":0,"session_ms":0}"""
+        }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("HydraVpnService", "statsJson error: ${e.message}")
