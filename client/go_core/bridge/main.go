@@ -65,6 +65,8 @@ type tcpConn struct {
 	dstPort  uint16
 	ourSeq   uint32
 	theirSeq uint32 // следующий ожидаемый от app (наш ACK-номер)
+	ackBase  uint32
+	appWin   uint32
 	pending  []pendSeg
 	closed   bool
 }
@@ -198,11 +200,15 @@ func handleTCP(pkt []byte, ihl int, srcIP, dstIP net.IP) {
 		return
 	}
 
-	// ACK от app: снимаем подтверждённые сегменты с очереди ретрансмита
+	// ACK от app: снимаем подтверждённые + обновляем окно
 	if flags&0x10 != 0 {
 		for len(conn.pending) > 0 && conn.pending[0].end <= ack {
 			conn.pending = conn.pending[1:]
 		}
+		if ack-conn.ackBase < 0x80000000 {
+			conn.ackBase = ack
+		}
+		conn.appWin = uint32(binary.BigEndian.Uint16(pkt[ihl+14 : ihl+16]))
 	}
 
 	// Данные от app: dedup по sequence
@@ -253,6 +259,8 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 		ourSeq:   1000,
 		theirSeq: theirSeq + 1,
 	}
+		ackBase:  1001,
+		appWin:   65535,
 
 	key := fmt.Sprintf("%s:%d-%s:%d", srcIP, srcPort, dstIP, dstPort)
 	connsMu.Lock()
@@ -281,6 +289,15 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 			}
 			data := append([]byte{}, buf[:n]...)
 			conn.mu.Lock()
+			for !conn.closed {
+				unacked := conn.ourSeq - conn.ackBase
+				if unacked+uint32(len(data)) <= conn.appWin {
+					break
+				}
+				conn.mu.Unlock()
+				time.Sleep(30 * time.Millisecond)
+				conn.mu.Lock()
+			}
 			if !conn.closed {
 				sendTCP(conn, 0x18, data)
 				conn.ourSeq += uint32(n)
@@ -301,14 +318,15 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 			}
 			now := time.Now()
 			for i := range conn.pending {
-				if now.Sub(conn.pending[i].sentAt) > 700*time.Millisecond {
+				if now.Sub(conn.pending[i].sentAt) > 1200*time.Millisecond {
 					unix.Write(tunFd, conn.pending[i].pkt)
 					addTx(len(conn.pending[i].pkt))
 					conn.pending[i].sentAt = now
 					addRetrans()
 				}
 			}
-			if len(conn.pending) > 128 {
+			if len(conn.pending) > 512 {
+				log.Printf("[hb] conn %s: pending overflow -> close", key)
 				conn.closed = true
 				conn.socks.Close()
 				connsMu.Lock()
