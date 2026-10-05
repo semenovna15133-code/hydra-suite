@@ -242,7 +242,9 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 	go func() {
 		buf := make([]byte, 4096)
 		for {
+			log.Printf("[hb] socks.Read: reading...")
 			n, err := socks.Read(buf)
+			log.Printf("[hb] socks.Read: n=%d err=%v", n, err)
 			if err != nil {
 				socks.Close()
 				connsMu.Lock()
@@ -260,6 +262,7 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 }
 
 func sendTCP(conn *tcpConn, flags byte, payload []byte) {
+	log.Printf("[hb] sendTCP flags=0x%x payload=%d", flags, len(payload))
 	ipLen := 20 + 20 + len(payload)
 	pkt := make([]byte, ipLen)
 
