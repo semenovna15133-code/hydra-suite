@@ -68,24 +68,35 @@ class HydraVpnService : VpnService() {
 
         /** Возраст последнего handshake (мс); -1 = туннель не запущен */
         /** JSON статистики туннеля: rx/tx bytes, session_ms */
-        fun statsJson(): String {
-            try {
-                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "50"))
-                val output = process.inputStream.bufferedReader().readText()
-                val statsLine = output.lines().reversed().find { it.contains("[hb] stats") }
-                if (statsLine != null) {
-                    val rxMatch = Regex("rx_bytes=(\\d+)").find(statsLine)
-                    val txMatch = Regex("tx_bytes=(\\d+)").find(statsLine)
-                    val msMatch = Regex("session_ms=(\\d+)").find(statsLine)
-                    val rx = rxMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                    val tx = txMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                    val ms = msMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                    return """{"rx_bytes":$rx,"tx_bytes":$tx,"session_ms":$ms}"""
+        @Volatile
+        private var cachedStats: String = """{"rx_bytes":0,"tx_bytes":0,"session_ms":0}"""
+        private var statsThreadStarted = false
+
+        private fun ensureStatsThread() {
+            if (statsThreadStarted) return
+            statsThreadStarted = true
+            Thread {
+                while (true) {
+                    try {
+                        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "30"))
+                        val out = proc.inputStream.bufferedReader().readText()
+                        proc.destroy()
+                        val line = out.lines().reversed().find { it.contains("[hb] stats") }
+                        if (line != null) {
+                            val rx = Regex("rx_bytes=(\d+)").find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            val tx = Regex("tx_bytes=(\d+)").find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            val ms = Regex("session_ms=(\d+)").find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            cachedStats = """{"rx_bytes":$rx,"tx_bytes":$tx,"session_ms":$ms}"""
+                        }
+                    } catch (e: Exception) { }
+                    Thread.sleep(2000)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("HydraVpnService", "statsJson error: ${e.message}")
-            }
-            return """{"rx_bytes":0,"tx_bytes":0,"session_ms":0}"""
+            }.start()
+        }
+
+        fun statsJson(): String {
+            ensureStatsThread()
+            return cachedStats
         }
                 }
             } catch (e: Exception) {
