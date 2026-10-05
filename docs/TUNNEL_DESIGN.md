@@ -59,3 +59,16 @@ Failover (7.5): меняем SOCKS5-апстрим ПОД живым TUN — О�
 - server: latest handshake 35s ago, 3.52 KiB received
 - iptables FORWARD awg0->ens3: 13 packets forwarded
 - Полное описание решённых проблем Р-01..Р-04: git log 223975c
+
+## СТАТУС (2026-10-05): DATA-PLANE РАБОТАЕТ END-TO-END ✅
+
+Цепочка: App -> TUN fd (SCM_RIGHTS) -> hydra-bridge (pure Go tun2socks)
+-> SOCKS5 127.0.0.1:1081 -> aivpn-client -> UDP-туннель -> server -> internet.
+Проверено: Chrome грузит example.com, DNS резолвится, TLS-сессии идут.
+
+### Известные ограничения MVP (план улучшений)
+- TCP: упрощённая state machine (без ретрансмитов/окон) — ок для демо,
+  для продакшена заменить на sing-tun
+- UDP: только порт 53 (DNS); остальной UDP дропается
+- IPv6: дропается (v4-only)
+- Фрагментация IP не обрабатывается
