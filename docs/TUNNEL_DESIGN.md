@@ -72,3 +72,19 @@ Failover (7.5): меняем SOCKS5-апстрим ПОД живым TUN — О�
 - UDP: только порт 53 (DNS); остальной UDP дропается
 - IPv6: дропается (v4-only)
 - Фрагментация IP не обрабатывается
+
+## ФИНАЛ (2026-10-06): MVP ПОЛНОСТЬЮ РАБОТАЕТ 🎉
+
+UI показывает: статус Подключено, сервер, протокол, RTT, живой трафик rx/tx, таймер.
+Stats-канал: bridge (Go) -> files/hb_stats.json -> HydraVpnService.statsJson() -> Flutter.
+Почему не logcat: UID-фильтры+exec в main thread=ANR; почему не /proc/net/dev: SELinux EACCES;
+почему не /data/local/tmp: SELinux Enforcing. filesDir своего пакета — единственный надёжный путь.
+
+### Извлечённые уроки (антипаттерны проекта)
+1. Gradle jniLibs кэш молча подменяет .so → md5-гейт APK обязателен
+2. zip -u с абсолютным путём кладёт файл не в lib/x86_64/ → Native binary not found
+3. Kotlin: "\d" — compile error (нужно "\\d" или [0-9])
+4. Go: нет тройных кавычек """ (это Kotlin)
+5. exec() в MethodChannel (main thread) = ANR
+6. gVisor fdbased молча не читает dup'нутый fd на Android → свой endpoint
+7. Android seccomp: epoll_wait блокирован (SIGSYS 232), poll разрешён
