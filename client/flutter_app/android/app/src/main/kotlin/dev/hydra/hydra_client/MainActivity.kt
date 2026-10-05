@@ -155,14 +155,10 @@ class MainActivity : FlutterActivity() {
                     result.success(HydraVpnService.statsJson())
                 }
                 "getTunnelStatus" -> {
-                    Log.d("TunnelStatus", "isHandshakeComplete=${HydraVpnService.isHandshakeComplete}, " +
-                        "handshakeAgeMs=${HydraVpnService.handshakeAgeMs()}, " +
-                        "lastStatus=${HealthMonitor.lastStatus}")
+                    Log.d("TunnelStatus", "isRunning=${HydraVpnService.isRunning}, isHandshakeComplete=${HydraVpnService.isHandshakeComplete}")
                     val status = when {
                         !HydraVpnService.isRunning -> "disconnected"
-                        HealthMonitor.lastStatus == HealthMonitor.HealthStatus.DOWN -> "blocked"
-                        HealthMonitor.lastStatus == HealthMonitor.HealthStatus.UNSTABLE -> "unstable"
-                        HydraVpnService.handshakeAgeMs() in 0..180_000 -> "connected"
+                        HydraVpnService.isHandshakeComplete -> "connected"
                         else -> "connecting"
                     }
                     result.success(status)

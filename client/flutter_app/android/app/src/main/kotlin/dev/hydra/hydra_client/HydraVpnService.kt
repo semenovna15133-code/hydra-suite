@@ -69,11 +69,21 @@ class HydraVpnService : VpnService() {
         /** Возраст последнего handshake (мс); -1 = туннель не запущен */
         /** JSON статистики туннеля: rx/tx bytes, session_ms */
         fun statsJson(): String {
-            instance?.tunnel?.let { return it.stats() }
-            val at = multiProtoConnectedAt
-            if (at <= 0) return "{}"
-            val (rx, tx) = instance?.multiProtocolManager?.getTrafficStats() ?: Pair(0L, 0L)
-            return "{\"rx_bytes\":$rx,\"tx_bytes\":$tx,\"session_ms\":${System.currentTimeMillis() - at},\"protocol\":\"$activeProtocol\"}"
+            try {
+                val proc = java.io.File("/proc/net/dev").readText()
+                val tunLine = proc.lines().find { it.trim().startsWith("tun0:") }
+                if (tunLine != null) {
+                    val parts = tunLine.trim().split("\\s+".toRegex())
+                    if (parts.size >= 17) {
+                        val rxBytes = parts[1].toLongOrNull() ?: 0L
+                        val txBytes = parts[9].toLongOrNull() ?: 0L
+                        return """{"rx_bytes":$rxBytes,"tx_bytes":$txBytes}"""
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("HydraVpnService", "statsJson error: ${e.message}")
+            }
+            return """{"rx_bytes":0,"tx_bytes":0}"""
         }
 
         fun handshakeAgeMs(): Long {
