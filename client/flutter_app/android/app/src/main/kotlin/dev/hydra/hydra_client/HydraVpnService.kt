@@ -98,13 +98,6 @@ class HydraVpnService : VpnService() {
             ensureStatsThread()
             return cachedStats
         }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("HydraVpnService", "statsJson error: ${e.message}")
-            }
-            return """{"rx_bytes":0,"tx_bytes":0}"""
-        }
-
         fun handshakeAgeMs(): Long {
             instance?.tunnel?.let { return it.lastHandshakeMs() }
             val at = multiProtoConnectedAt
