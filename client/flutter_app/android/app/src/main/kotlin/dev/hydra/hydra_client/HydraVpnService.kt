@@ -95,7 +95,6 @@ class HydraVpnService : VpnService() {
         }
 
         fun statsJson(): String {
-		android.util.Log.d("HydraVpnService", "statsJson returning: $cachedStats")
             ensureStatsThread()
             return cachedStats
         }
