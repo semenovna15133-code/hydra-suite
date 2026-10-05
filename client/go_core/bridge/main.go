@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -11,20 +12,27 @@ import (
 
 	"golang.org/x/net/proxy"
 	"golang.org/x/sys/unix"
+	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
 var (
 	socksAddr     string
 	tunFd         int
 	statsFilePath = "/data/user/0/dev.hydra.hydra_client/files/hb_stats.json"
+	netStack      *stack.Stack
 )
 
 var (
 	statsMu      sync.Mutex
 	rxBytes      int64
 	txBytes      int64
-	dupCount     int64
-	retransCount int64
 	sessionStart time.Time
 )
 
@@ -35,44 +43,111 @@ func initStats() {
 			time.Sleep(2 * time.Second)
 			statsMu.Lock()
 			rx, tx := rxBytes, txBytes
-			dup, rt := dupCount, retransCount
 			ms := int64(time.Since(sessionStart).Milliseconds())
 			statsMu.Unlock()
 			data := fmt.Sprintf("{\"rx_bytes\":%d,\"tx_bytes\":%d,\"session_ms\":%d}", rx, tx, ms)
 			os.WriteFile(statsFilePath, []byte(data), 0666)
-			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d dup=%d retrans=%d", rx, tx, ms, dup, rt)
+			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d", rx, tx, ms)
 		}
 	}()
 }
 
-func addRx(n int)  { statsMu.Lock(); rxBytes += int64(n); statsMu.Unlock() }
-func addTx(n int)  { statsMu.Lock(); txBytes += int64(n); statsMu.Unlock() }
-func addDup()      { statsMu.Lock(); dupCount++; statsMu.Unlock() }
-func addRetrans()  { statsMu.Lock(); retransCount++; statsMu.Unlock() }
+func addRx(n int) { statsMu.Lock(); rxBytes += int64(n); statsMu.Unlock() }
+func addTx(n int) { statsMu.Lock(); txBytes += int64(n); statsMu.Unlock() }
 
-type pendSeg struct {
-	end    uint32
-	pkt    []byte
-	sentAt time.Time
+// tunEndpoint: минимальный LinkEndpoint поверх TUN fd
+type tunEndpoint struct {
+	fd   int
+	mtu  uint32
+	mu   sync.RWMutex
+	disp stack.NetworkDispatcher
 }
 
-type tcpConn struct {
-	mu       sync.Mutex
-	socks    net.Conn
-	srcIP    net.IP
-	srcPort  uint16
-	dstIP    net.IP
-	dstPort  uint16
-	ourSeq   uint32
-	theirSeq uint32 // следующий ожидаемый от app (наш ACK-номер)
-	ackBase  uint32
-	appWin   uint32
-	pending  []pendSeg
-	closed   bool
+func (e *tunEndpoint) MTU() uint32                             { return e.mtu }
+func (e *tunEndpoint) MaxHeaderLength() uint16                 { return 0 }
+func (e *tunEndpoint) LinkAddress() tcpip.LinkAddress          { return "" }
+func (e *tunEndpoint) Capabilities() stack.LinkEndpointCapabilities { return 0 }
+func (e *tunEndpoint) Attach(d stack.NetworkDispatcher) {
+	e.mu.Lock()
+	e.disp = d
+	e.mu.Unlock()
+}
+func (e *tunEndpoint) IsAttached() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.disp != nil
+}
+func (e *tunEndpoint) Wait()                                  {}
+func (e *tunEndpoint) ARPHardwareType() header.ARPHardwareType { return header.ARPHardwareNone }
+func (e *tunEndpoint) AddHeader(stack.PacketBufferPtr)         {}
+func (e *tunEndpoint) ParseHeader(stack.PacketBufferPtr) bool  { return true }
+
+// WritePackets: stack -> TUN (доказанный примитив unix.Write)
+func (e *tunEndpoint) WritePackets(pkts stack.PacketBufferList) (int, tcpip.Error) {
+	n := 0
+	for _, pkt := range pkts.AsSlice() {
+		v := pkt.ToView()
+		b := v.AsSlice()
+		if len(b) > 0 {
+			unix.Write(e.fd, b)
+			addTx(len(b))
+		}
+		v.Release()
+		n++
+	}
+	return n, nil
 }
 
-var conns = make(map[string]*tcpConn)
-var connsMu sync.Mutex
+// pump: TUN -> stack (доказанный примитив poll+read)
+func (e *tunEndpoint) pump() {
+	buf := make([]byte, 65536)
+	pfds := []unix.PollFd{{Fd: int32(e.fd), Events: unix.POLLIN}}
+	var addrSet sync.Once
+
+	for {
+		if _, err := unix.Poll(pfds, 1000); err != nil {
+			continue
+		}
+		n, err := unix.Read(e.fd, buf)
+		if err != nil || n < 20 {
+			continue
+		}
+		addRx(n)
+
+		var proto tcpip.NetworkProtocolNumber
+		switch buf[0] >> 4 {
+		case 4:
+			proto = ipv4.ProtocolNumber
+		default:
+			continue
+		}
+
+		// локальный адрес TUN узнаём из первого пакета (до delivery!)
+		addrSet.Do(func() {
+			var a [4]byte
+			copy(a[:], buf[12:16])
+			netStack.AddProtocolAddress(1, tcpip.ProtocolAddress{
+				Protocol: ipv4.ProtocolNumber,
+				AddressWithPrefix: tcpip.AddressWithPrefix{
+					Address:   tcpip.AddrFrom4(a),
+					PrefixLen: 32,
+				},
+			}, stack.AddressProperties{})
+			log.Printf("[hb] netstack local addr %d.%d.%d.%d/32", a[0], a[1], a[2], a[3])
+		})
+
+		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
+			Payload: buffer.MakeWithData(buf[:n]),
+		})
+		e.mu.RLock()
+		d := e.disp
+		e.mu.RUnlock()
+		if d != nil {
+			d.DeliverNetworkPacket(proto, pkt)
+		}
+		pkt.DecRef()
+	}
+}
 
 func main() {
 	if len(os.Args) < 3 {
@@ -89,11 +164,119 @@ func main() {
 		log.Fatalf("recvFd: %v", err)
 	}
 	tunFd = fd
-	log.Printf("[hb] got TUN fd=%d, socks5=%s, stats=%s", fd, socksAddr, statsFilePath)
-	log.Printf("[hb] tun2socks FULL-DUPLEX v2 (dedup + retransmit)")
+	log.Printf("[hb] got TUN fd=%d, socks5=%s", fd, socksAddr)
+	log.Printf("[hb] NETSTACK v4 (gVisor TCP/IP) running")
 	initStats()
 
-	run()
+	netStack = stack.New(stack.Options{
+		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol},
+		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
+	})
+
+	ep := &tunEndpoint{fd: tunFd, mtu: 1500}
+	if err := netStack.CreateNIC(1, ep); err != nil {
+		log.Fatalf("CreateNIC: %v", err)
+	}
+	netStack.SetRouteTable([]tcpip.Route{{
+		Destination: tcpip.AddressWithPrefix{Address: tcpip.Address{}, PrefixLen: 0},
+		NIC:         1,
+	}})
+
+	// TCP: промышленный forwarder
+	tf := tcp.NewForwarder(netStack, 0, 512, func(r *tcp.ForwarderRequest) {
+		id := r.ID()
+		ep, err := r.CreateEndpoint()
+		if err != nil {
+			log.Printf("[hb] tcp ep: %v", err)
+			return
+		}
+		conn := gonet.NewTCPConn(netStack, ep, ipv4.ProtocolNumber)
+		log.Printf("[hb] TCP %s:%d -> %s:%d", id.RemoteAddress, id.RemotePort, id.LocalAddress, id.LocalPort)
+		go tcpSplice(conn, id)
+	})
+	netStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tf.HandlePacket)
+
+	// UDP: DNS через SOCKS5-TCP
+	uf := udp.NewForwarder(netStack, func(r *udp.ForwarderRequest) {
+		id := r.ID()
+		if id.LocalPort != 53 {
+			return
+		}
+		ep, err := r.CreateEndpoint()
+		if err != nil {
+			return
+		}
+		conn := gonet.NewUDPConn(netStack, ep)
+		go dnsHandle(conn, id)
+	})
+	netStack.SetTransportProtocolHandler(udp.ProtocolNumber, uf.HandlePacket)
+
+	go ep.pump()
+	select {}
+}
+
+func tcpSplice(conn *gonet.TCPConn, id stack.TransportEndpointID) {
+	defer conn.Close()
+	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
+	if err != nil {
+		return
+	}
+	dst := net.JoinHostPort(net.IP(id.LocalAddress.AsSlice()).String(), fmt.Sprint(id.LocalPort))
+	up, err := d.Dial("tcp", dst)
+	if err != nil {
+		log.Printf("[hb] socks dial %s: %v", dst, err)
+		return
+	}
+	defer up.Close()
+	log.Printf("[hb] connected %s via SOCKS5 (netstack)", dst)
+
+	go func() {
+		io.Copy(up, conn)
+		up.Close()
+	}()
+	io.Copy(conn, up)
+}
+
+func dnsHandle(conn *gonet.UDPConn, id stack.TransportEndpointID) {
+	defer conn.Close()
+	buf := make([]byte, 2048)
+	for {
+		n, from, err := conn.ReadFrom(buf)
+		if err != nil {
+			return
+		}
+		resp := dnsOverTCP(buf[:n], id)
+		if resp == nil {
+			continue
+		}
+		conn.WriteTo(resp, from)
+	}
+}
+
+func dnsOverTCP(query []byte, id stack.TransportEndpointID) []byte {
+	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
+	if err != nil {
+		return nil
+	}
+	dst := net.JoinHostPort(net.IP(id.LocalAddress.AsSlice()).String(), "53")
+	c, err := d.Dial("tcp", dst)
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+
+	req := make([]byte, 2+len(query))
+	binary.BigEndian.PutUint16(req[:2], uint16(len(query)))
+	copy(req[2:], query)
+	c.Write(req)
+
+	resp := make([]byte, 4096)
+	c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	n, err := c.Read(resp)
+	if err != nil || n < 2 {
+		return nil
+	}
+	return resp[2:n]
 }
 
 func recvFd(name string) (int, error) {
@@ -124,335 +307,4 @@ func recvFd(name string) (int, error) {
 		return 0, fmt.Errorf("no fds")
 	}
 	return fds[0], nil
-}
-
-func run() {
-	buf := make([]byte, 4096)
-	pfds := []unix.PollFd{{Fd: int32(tunFd), Events: unix.POLLIN}}
-
-	for {
-		if _, err := unix.Poll(pfds, 1000); err != nil {
-			continue
-		}
-		n, err := unix.Read(tunFd, buf)
-		if err != nil || n < 20 {
-			continue
-		}
-		addRx(n)
-
-		if buf[0]>>4 != 4 {
-			continue
-		}
-		ihl := int(buf[0]&0x0f) * 4
-		if n < ihl {
-			continue
-		}
-
-		srcIP := net.IP(append([]byte{}, buf[12:16]...))
-		dstIP := net.IP(append([]byte{}, buf[16:20]...))
-		proto := buf[9]
-
-		switch proto {
-		case 6:
-			pkt := append([]byte{}, buf[:n]...)
-			go handleTCP(pkt, ihl, srcIP, dstIP)
-		case 17:
-			if n >= ihl+8 {
-				dstPort := binary.BigEndian.Uint16(buf[ihl+2 : ihl+4])
-				if dstPort == 53 {
-					pkt := append([]byte{}, buf[:n]...)
-					go handleDNS(pkt, ihl, srcIP, dstIP)
-				}
-			}
-		}
-	}
-}
-
-func handleTCP(pkt []byte, ihl int, srcIP, dstIP net.IP) {
-	if len(pkt) < ihl+20 {
-		return
-	}
-	srcPort := binary.BigEndian.Uint16(pkt[ihl : ihl+2])
-	dstPort := binary.BigEndian.Uint16(pkt[ihl+2 : ihl+4])
-	seq := binary.BigEndian.Uint32(pkt[ihl+4 : ihl+8])
-	ack := binary.BigEndian.Uint32(pkt[ihl+8 : ihl+12])
-	flags := pkt[ihl+13]
-	tcpHdrLen := int(pkt[ihl+12]>>4) * 4
-
-	key := fmt.Sprintf("%s:%d-%s:%d", srcIP, srcPort, dstIP, dstPort)
-
-	if flags&0x02 != 0 && flags&0x10 == 0 {
-		log.Printf("[hb] TCP SYN %s:%d -> %s:%d", srcIP, srcPort, dstIP, dstPort)
-		go newTCPConn(srcIP, srcPort, dstIP, dstPort, seq)
-		return
-	}
-
-	connsMu.Lock()
-	conn, exists := conns[key]
-	connsMu.Unlock()
-	if !exists {
-		return
-	}
-
-	conn.mu.Lock()
-	defer conn.mu.Unlock()
-	if conn.closed {
-		return
-	}
-
-	// ACK от app: снимаем подтверждённые + обновляем окно
-	if flags&0x10 != 0 {
-		for len(conn.pending) > 0 && conn.pending[0].end <= ack {
-			conn.pending = conn.pending[1:]
-		}
-		if ack-conn.ackBase < 0x80000000 {
-			conn.ackBase = ack
-		}
-		conn.appWin = uint32(binary.BigEndian.Uint16(pkt[ihl+14 : ihl+16]))
-	}
-
-	// Данные от app: dedup по sequence
-	if flags&0x10 != 0 && len(pkt) > ihl+tcpHdrLen {
-		payload := pkt[ihl+tcpHdrLen:]
-		end := seq + uint32(len(payload))
-		switch {
-		case end <= conn.theirSeq:
-			addDup() // ретрансмит от app: уже переслали в SOCKS5
-		case seq == conn.theirSeq:
-			conn.socks.Write(payload)
-			conn.theirSeq = end
-		default:
-			addDup() // дыра в последовательности: app ретрансмитит сам
-		}
-		sendTCP(conn, 0x10, nil)
-	}
-
-	if flags&0x01 != 0 || flags&0x04 != 0 {
-		conn.closed = true
-		conn.socks.Close()
-		connsMu.Lock()
-		delete(conns, key)
-		connsMu.Unlock()
-	}
-}
-
-func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, theirSeq uint32) {
-	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
-	if err != nil {
-		log.Printf("[hb] socks error: %v", err)
-		return
-	}
-	dst := net.JoinHostPort(dstIP.String(), fmt.Sprint(dstPort))
-	socks, err := d.Dial("tcp", dst)
-	if err != nil {
-		log.Printf("[hb] socks dial %s: %v", dst, err)
-		return
-	}
-	log.Printf("[hb] connected %s via SOCKS5", dst)
-
-	conn := &tcpConn{
-		socks:    socks,
-		srcIP:    srcIP,
-		srcPort:  srcPort,
-		dstIP:    dstIP,
-		dstPort:  dstPort,
-		ourSeq:   1000,
-		theirSeq: theirSeq + 1,
-	}
-		ackBase:  1001,
-		appWin:   65535,
-
-	key := fmt.Sprintf("%s:%d-%s:%d", srcIP, srcPort, dstIP, dstPort)
-	connsMu.Lock()
-	conns[key] = conn
-	connsMu.Unlock()
-
-	sendTCP(conn, 0x12, nil)
-	conn.mu.Lock()
-	conn.ourSeq++
-	conn.mu.Unlock()
-
-	// Поток чтения из SOCKS5 -> TUN
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := socks.Read(buf)
-			if err != nil {
-				conn.mu.Lock()
-				conn.closed = true
-				conn.mu.Unlock()
-				socks.Close()
-				connsMu.Lock()
-				delete(conns, key)
-				connsMu.Unlock()
-				return
-			}
-			data := append([]byte{}, buf[:n]...)
-			conn.mu.Lock()
-			for !conn.closed {
-				unacked := conn.ourSeq - conn.ackBase
-				if unacked+uint32(len(data)) <= conn.appWin {
-					break
-				}
-				conn.mu.Unlock()
-				time.Sleep(30 * time.Millisecond)
-				conn.mu.Lock()
-			}
-			if !conn.closed {
-				sendTCP(conn, 0x18, data)
-				conn.ourSeq += uint32(n)
-			}
-			conn.mu.Unlock()
-		}
-	}()
-
-	// Поток ретрансмитов: неподтверждённые >700ms шлём снова
-	go func() {
-		t := time.NewTicker(300 * time.Millisecond)
-		defer t.Stop()
-		for range t.C {
-			conn.mu.Lock()
-			if conn.closed {
-				conn.mu.Unlock()
-				return
-			}
-			now := time.Now()
-			for i := range conn.pending {
-				if now.Sub(conn.pending[i].sentAt) > 1200*time.Millisecond {
-					unix.Write(tunFd, conn.pending[i].pkt)
-					addTx(len(conn.pending[i].pkt))
-					conn.pending[i].sentAt = now
-					addRetrans()
-				}
-			}
-			if len(conn.pending) > 512 {
-				log.Printf("[hb] conn %s: pending overflow -> close", key)
-				conn.closed = true
-				conn.socks.Close()
-				connsMu.Lock()
-				delete(conns, key)
-				connsMu.Unlock()
-				conn.mu.Unlock()
-				return
-			}
-			conn.mu.Unlock()
-		}
-	}()
-}
-
-func sendTCP(conn *tcpConn, flags byte, payload []byte) {
-	ipLen := 20 + 20 + len(payload)
-	pkt := make([]byte, ipLen)
-
-	pkt[0] = 0x45
-	binary.BigEndian.PutUint16(pkt[2:4], uint16(ipLen))
-	pkt[8] = 64
-	pkt[9] = 6
-	copy(pkt[12:16], conn.dstIP.To4())
-	copy(pkt[16:20], conn.srcIP.To4())
-	binary.BigEndian.PutUint16(pkt[10:12], ipChecksum(pkt[:20]))
-
-	binary.BigEndian.PutUint16(pkt[20:22], conn.dstPort)
-	binary.BigEndian.PutUint16(pkt[22:24], conn.srcPort)
-	binary.BigEndian.PutUint32(pkt[24:28], conn.ourSeq)
-	binary.BigEndian.PutUint32(pkt[28:32], conn.theirSeq)
-	pkt[32] = 0x50
-	pkt[33] = flags
-	binary.BigEndian.PutUint16(pkt[34:36], 65535)
-	copy(pkt[40:], payload)
-	binary.BigEndian.PutUint16(pkt[36:38], tcpChecksum(pkt[12:20], pkt[20:]))
-
-	if len(payload) > 0 {
-		conn.pending = append(conn.pending, pendSeg{
-			end:    conn.ourSeq + uint32(len(payload)),
-			pkt:    pkt,
-			sentAt: time.Now(),
-		})
-	}
-	addTx(len(pkt))
-	unix.Write(tunFd, pkt)
-}
-
-func handleDNS(pkt []byte, ihl int, srcIP, dstIP net.IP) {
-	srcPort := binary.BigEndian.Uint16(pkt[ihl : ihl+2])
-	dstPort := binary.BigEndian.Uint16(pkt[ihl+2 : ihl+4])
-	payload := pkt[ihl+8:]
-
-	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
-	if err != nil {
-		return
-	}
-	conn, err := d.Dial("tcp", net.JoinHostPort(dstIP.String(), "53"))
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	req := make([]byte, 2+len(payload))
-	binary.BigEndian.PutUint16(req[:2], uint16(len(payload)))
-	copy(req[2:], payload)
-	conn.Write(req)
-
-	resp := make([]byte, 4096)
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	n, err := conn.Read(resp)
-	if err != nil || n < 2 {
-		return
-	}
-	resp = resp[2:n]
-
-	sendUDP(srcIP, srcPort, dstIP, dstPort, resp)
-}
-
-func sendUDP(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, payload []byte) {
-	ipLen := 20 + 8 + len(payload)
-	pkt := make([]byte, ipLen)
-
-	pkt[0] = 0x45
-	binary.BigEndian.PutUint16(pkt[2:4], uint16(ipLen))
-	pkt[8] = 64
-	pkt[9] = 17
-	copy(pkt[12:16], dstIP.To4())
-	copy(pkt[16:20], srcIP.To4())
-	binary.BigEndian.PutUint16(pkt[10:12], ipChecksum(pkt[:20]))
-
-	binary.BigEndian.PutUint16(pkt[20:22], dstPort)
-	binary.BigEndian.PutUint16(pkt[22:24], srcPort)
-	binary.BigEndian.PutUint16(pkt[24:26], uint16(8+len(payload)))
-	pkt[26] = 0
-	pkt[27] = 0
-	copy(pkt[28:], payload)
-
-	addTx(len(pkt))
-	unix.Write(tunFd, pkt)
-}
-
-func ipChecksum(hdr []byte) uint16 {
-	var sum uint32
-	for i := 0; i < len(hdr); i += 2 {
-		sum += uint32(binary.BigEndian.Uint16(hdr[i : i+2]))
-	}
-	sum = (sum >> 16) + (sum & 0xffff)
-	sum += sum >> 16
-	return ^uint16(sum)
-}
-
-func tcpChecksum(pseudoIP, tcpSeg []byte) uint16 {
-	var sum uint32
-	sum += uint32(binary.BigEndian.Uint16(pseudoIP[0:2]))
-	sum += uint32(binary.BigEndian.Uint16(pseudoIP[2:4]))
-	sum += uint32(binary.BigEndian.Uint16(pseudoIP[4:6]))
-	sum += uint32(binary.BigEndian.Uint16(pseudoIP[6:8]))
-	sum += uint32(6)
-	sum += uint32(len(tcpSeg))
-	for i := 0; i < len(tcpSeg); i += 2 {
-		if i+1 < len(tcpSeg) {
-			sum += uint32(binary.BigEndian.Uint16(tcpSeg[i : i+2]))
-		} else {
-			sum += uint32(tcpSeg[i]) << 8
-		}
-	}
-	sum = (sum >> 16) + (sum & 0xffff)
-	sum += sum >> 16
-	return ^uint16(sum)
 }
