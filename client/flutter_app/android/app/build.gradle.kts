@@ -74,7 +74,7 @@ kotlin {
 }
 
 dependencies {
-    // implementation(files("libs/keyfile.aar"))  // временно отключено: gomobile не компилируется
+    implementation(files("libs/keyfile.aar"))  // временно отключено: gomobile не компилируется
 }
 
 flutter {

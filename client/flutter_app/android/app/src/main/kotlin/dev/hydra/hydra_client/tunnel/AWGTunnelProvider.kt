@@ -15,7 +15,7 @@ class AWGTunnelProvider(
     companion object {
         private const val TAG = "AWGTunnelProvider"
         /** true пока Go-туннель не восстановлен (gomobile broken) */
-        const val AWG_DISABLED = true
+        const val AWG_DISABLED = false
     }
 
     
