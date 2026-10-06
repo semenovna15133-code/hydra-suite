@@ -88,3 +88,10 @@ Stats-канал: bridge (Go) -> files/hb_stats.json -> HydraVpnService.statsJso
 5. exec() в MethodChannel (main thread) = ANR
 6. gVisor fdbased молча не читает dup'нутый fd на Android → свой endpoint
 7. Android seccomp: epoll_wait блокирован (SIGSYS 232), poll разрешён
+
+## AWG RESTORED (2026-10-07)
+Smart Connect scores: AmneziaWG=100 / AIVPN=75 / WDTT=60.
+AWG: RTT 55ms (vs 484ms AIVPN), 118MB за 40min без разрывов.
+Коллизия AAR keyfile.* vs Kotlin-парсер решена пакетом keyfilekt.
+Урок: dex-коллизии пакетов AAR/Kotlin дают NoSuchFieldError/NoSuchMethodError
+на runtime при зелёной компиляции — пакеты-тёзки запрещены.
