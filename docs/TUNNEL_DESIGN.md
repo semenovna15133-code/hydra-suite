@@ -95,3 +95,15 @@ AWG: RTT 55ms (vs 484ms AIVPN), 118MB за 40min без разрывов.
 Коллизия AAR keyfile.* vs Kotlin-парсер решена пакетом keyfilekt.
 Урок: dex-коллизии пакетов AAR/Kotlin дают NoSuchFieldError/NoSuchMethodError
 на runtime при зелёной компиляции — пакеты-тёзки запрещены.
+
+## ИТОГ BREADTH-FIRST (2026-10-07)
+
+Все три протокола интегрированы в Smart Connect:
+- AmneziaWG 3.1: gomobile AAR (keyfile+tunnel), score=100, RTT 55ms
+- AIVPN: Rust бинарник + hydra-bridge (Go netstack), score=75, sustained 0.77 Мбит/с
+- WDTT: Rust бинарник (arm64 only в jniLibs), score=60, тестируется на ARM
+
+Исходники wdtt-client НЕ в этом репозитории (вероятно отдельный репо).
+Для эмулятора нужен x86_64 build (cargo build --target x86_64-linux-android).
+
+Следующая фаза: ПОЛИРОВКА (depth-first).
