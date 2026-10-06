@@ -42,6 +42,8 @@ class WDTTTunnelProvider(
             putExtra(HydraVpnService.EXTRA_PROTOCOL, "wdtt")
             putExtra(HydraVpnService.EXTRA_WDTT_PASSWORD, peer.password)
             putExtra(HydraVpnService.EXTRA_ENDPOINT, peer.endpoint)
+            putExtra(HydraVpnService.EXTRA_WDTT_VK_HASHES, dev.hydra.hydra_client.SettingsStore.getVkHashes(context))
+            putExtra(HydraVpnService.EXTRA_WDTT_WORKERS, dev.hydra.hydra_client.SettingsStore.resolveWorkers(context))
         }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

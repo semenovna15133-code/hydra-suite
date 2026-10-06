@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         Keyfile.initRuntime()
+        setupSettingsChannel(flutterEngine)
 
         // === KeyFile channel ===
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, KEYFILE_CHANNEL).setMethodCallHandler { call, result ->
@@ -294,6 +295,27 @@ class MainActivity : FlutterActivity() {
             startForegroundService(intent)
         } else {
             startService(intent)
+        }
+    }
+
+    private fun setupSettingsChannel(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dev.hydra/settings").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getSettings" -> result.success(mapOf(
+                    "vkHashes" to SettingsStore.getVkHashes(this),
+                    "autoWorkers" to SettingsStore.isAutoWorkers(this),
+                    "workers" to SettingsStore.getManualWorkers(this),
+                    "resolvedWorkers" to SettingsStore.resolveWorkers(this),
+                    "advancedUi" to SettingsStore.isAdvancedUi(this),
+                    "onboarded" to SettingsStore.isOnboarded(this)
+                ))
+                "setVkHashes" -> { SettingsStore.setVkHashes(this, call.argument<String>("value") ?: ""); result.success(true) }
+                "setAutoWorkers" -> { SettingsStore.setWorkersMode(this, call.argument<Boolean>("auto") ?: true); result.success(true) }
+                "setWorkers" -> { SettingsStore.setManualWorkers(this, call.argument<Int>("workers") ?: 24); result.success(true) }
+                "setAdvancedUi" -> { SettingsStore.setAdvancedUi(this, call.argument<Boolean>("value") ?: false); result.success(true) }
+                "setOnboarded" -> { SettingsStore.setOnboarded(this, call.argument<Boolean>("value") ?: false); result.success(true) }
+                else -> result.notImplemented()
+            }
         }
     }
 }

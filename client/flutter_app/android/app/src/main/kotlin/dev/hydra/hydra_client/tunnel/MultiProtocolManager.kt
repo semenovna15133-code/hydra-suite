@@ -50,7 +50,7 @@ class MultiProtocolManager(private val context: Context) {
         }
     }
 
-    suspend fun startWdtt(vkHashes: String, connPassword: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun startWdtt(vkHashes: String, connPassword: String, workers: Int = 24): Boolean = withContext(Dispatchers.IO) {
         try {
             val binary = extractBinary("wdtt-client")
             wdttProcess = ProcessBuilder(listOf(
@@ -58,10 +58,24 @@ class MultiProtocolManager(private val context: Context) {
                 "--mode", "socks5",
                 "--socks-listen", "127.0.0.1:$WDTT_SOCKS_PORT",
                 "--vk-hashes", vkHashes,
-                "--conn-password", connPassword
+                "--conn-password", connPassword,
+                "--workers", workers.toString()
             )).redirectErrorStream(false).start()
             streamToLogcat(wdttProcess!!, "wdtt-client")
-            Log.i(TAG, "WDTT started, port=$WDTT_SOCKS_PORT")
+            // fallback: если бинарник не знает флаг --workers, он умрёт мгновенно
+            val exited = wdttProcess!!.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            if (exited) {
+                Log.w(TAG, "wdtt-client died early (exit=${wdttProcess!!.exitValue()}), retry without --workers")
+                wdttProcess = ProcessBuilder(listOf(
+                    binary.absolutePath,
+                    "--mode", "socks5",
+                    "--socks-listen", "127.0.0.1:$WDTT_SOCKS_PORT",
+                    "--vk-hashes", vkHashes,
+                    "--conn-password", connPassword
+                )).redirectErrorStream(false).start()
+                streamToLogcat(wdttProcess!!, "wdtt-client")
+            }
+            Log.i(TAG, "WDTT started, port=$WDTT_SOCKS_PORT, workers=$workers, hashes=${vkHashes.split(",").size}")
 
             startBridgeBinary(WDTT_SOCKS_PORT)
             true

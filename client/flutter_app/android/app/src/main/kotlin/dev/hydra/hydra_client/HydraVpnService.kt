@@ -100,6 +100,8 @@ class HydraVpnService : VpnService() {
         const val EXTRA_AIVPN_KEY = "aivpn_key"
         const val EXTRA_WDTT_PASSWORD = "wdtt_password"
         const val EXTRA_ENDPOINT = "endpoint"
+        const val EXTRA_WDTT_VK_HASHES = "wdtt_vk_hashes"
+        const val EXTRA_WDTT_WORKERS = "wdtt_workers"
         const val CHANNEL_ID = "hydra_vpn_channel"
         const val NOTIFICATION_ID = 1
         private const val TAG = "HydraVpnService"
@@ -215,7 +217,13 @@ class HydraVpnService : VpnService() {
         
         val started = when (protocol) {
             "aivpn" -> kotlinx.coroutines.runBlocking { multiProtocolManager!!.startAivpn(aivpnKey) }
-            "wdtt" -> kotlinx.coroutines.runBlocking { multiProtocolManager!!.startWdtt("", wdttPassword) }
+            "wdtt" -> kotlinx.coroutines.runBlocking {
+                multiProtocolManager!!.startWdtt(
+                    intent?.getStringExtra(EXTRA_WDTT_VK_HASHES) ?: "",
+                    wdttPassword,
+                    intent?.getIntExtra(EXTRA_WDTT_WORKERS, 24) ?: 24
+                )
+            }
             else -> false
         }
         

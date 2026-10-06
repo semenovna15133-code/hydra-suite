@@ -23,6 +23,11 @@ object SmartConnectManager {
     @Volatile
     var lastProbe: NetworkProbeResult? = null
         private set
+
+    /** true если для подключения не хватает VK-хешей (UI покажет онбординг). */
+    @Volatile
+    var needVkHashes: Boolean = false
+        private set
     
     fun registerProvider(provider: TunnelProvider) {
         providers.add(provider)
@@ -61,12 +66,31 @@ object SmartConnectManager {
         
         // Пробегаем по всем endpoint'ам для скоринга
         val firstEndpoint = kf.peers.firstOrNull()?.endpoint ?: "31.77.202.131:51820"
-        val probe = EnvironmentProbe.probe(firstEndpoint)
+        val probe = EnvironmentProbe.probe(context, firstEndpoint)
         lastProbe = probe
         lastLatencyMs = probe.latencyMs
         
-        val scored = providers.map { it to it.score(probe) }
-            .sortedByDescending { it.second }
+        val whiteList = EnvironmentProbe.whiteListDetected
+        val hashCount = dev.hydra.hydra_client.SettingsStore.getHashList(context).size
+
+        val scored = providers.map { p ->
+            var sc = p.score(probe)
+            if (whiteList) {
+                sc = when (p.name) {
+                    "WDTT" -> sc + 50          // обход белых списков через VK TURN
+                    else -> 0                  // AIVPN/AWG в белых списках не живут
+                }
+            }
+            p to sc
+        }.sortedByDescending { it.second }
+
+        // Белые списки + выбран WDTT, но хешей нет — просим пользователя добавить
+        needVkHashes = whiteList && hashCount == 0 &&
+            scored.firstOrNull()?.first?.name == "WDTT"
+        if (needVkHashes) {
+            Log.e(TAG, "White-list network but no VK hashes configured — ask user")
+            return null
+        }
         
         Log.i(TAG, "Providers scored: ${scored.map { "${it.first.name}=${it.second}" }}")
         
