@@ -12,9 +12,9 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import keyfile.Keyfile
-import keyfile.KeyFile
-import keyfile.Peer
+import keyfilekt.Keyfile
+import keyfilekt.KeyFile
+import keyfilekt.Peer
 import tunnel.Config
 import tunnel.SocketProtector
 import tunnel.Tunnel

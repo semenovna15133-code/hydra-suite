@@ -15,9 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import io.flutter.plugin.common.MethodChannel
-import keyfile.Keyfile
-import keyfile.KeyFile
-import keyfile.Peer
+import keyfilekt.Keyfile
+import keyfilekt.KeyFile
+import keyfilekt.Peer
 import java.io.File
 import java.io.FileOutputStream
 import android.util.Log

@@ -40,7 +40,7 @@ object SmartConnectManager {
             return null
         }
         
-        val kf = keyfile.Keyfile.parse(keyFile.absolutePath)
+        val kf = keyfilekt.Keyfile.parse(keyFile.absolutePath)
         
         // Очищаем старые провайдеры
         providers.clear()

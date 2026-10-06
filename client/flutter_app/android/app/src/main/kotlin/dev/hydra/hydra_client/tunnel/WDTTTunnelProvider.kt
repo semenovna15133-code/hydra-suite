@@ -5,7 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import dev.hydra.hydra_client.HydraVpnService
-import keyfile.Peer
+import keyfilekt.Peer
 import tunnel.NetworkProbeResult
 
 class WDTTTunnelProvider(
