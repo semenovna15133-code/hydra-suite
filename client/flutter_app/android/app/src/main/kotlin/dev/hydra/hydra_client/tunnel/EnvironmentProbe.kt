@@ -16,9 +16,14 @@ object EnvironmentProbe {
         private set
 
     private fun isCellular(context: Context): Boolean {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return false
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No ACCESS_NETWORK_STATE permission, assuming not cellular")
+            false
+        }
     }
 
     private fun googleReachable(): Boolean = runCatching {
