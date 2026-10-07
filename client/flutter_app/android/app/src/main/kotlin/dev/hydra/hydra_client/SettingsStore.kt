@@ -14,10 +14,26 @@ object SettingsStore {
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun getVkHashes(ctx: Context): String = prefs(ctx).getString(KEY_VK_HASHES, "") ?: ""
+    fun normalizeHashes(raw: String): String {
+        val parts = raw.split(Regex("[,\\s]+"))
+            .map { it.trim() }.filter { it.isNotEmpty() }
+        val cleaned = parts.map(::extractHash).filter { vkHashRe.matches(it) }
+        return cleaned.distinct().joinToString(",")
+    }
+
+    fun getVkHashes(ctx: Context): String {
+        val raw = prefs(ctx).getString(KEY_VK_HASHES, "") ?: ""
+        if (raw.isEmpty()) return ""
+        return normalizeHashes(raw)
+    }
     fun setVkHashes(ctx: Context, v: String) = prefs(ctx).edit().putString(KEY_VK_HASHES, v).apply()
-    fun getHashList(ctx: Context): List<String> =
-        getVkHashes(ctx).split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    fun getHashList(ctx: Context): List<String> {
+        val raw = getVkHashes(ctx)
+        if (raw.isEmpty()) return emptyList()
+        return normalizeHashes(raw).split(",").filter { it.isNotEmpty() }
+    }
+    
+    fun getVkHashesRaw(ctx: Context): String = getVkHashes(ctx)
 
     fun isAutoWorkers(ctx: Context): Boolean = prefs(ctx).getString(KEY_WORKERS_MODE, "auto") == "auto"
     fun setWorkersMode(ctx: Context, auto: Boolean) =
@@ -68,11 +84,5 @@ object SettingsStore {
         return s.trimEnd('/').trim()
     }
 
-    fun normalizeHashes(raw: String): String {
-        val parts = raw.split(Regex("[,\\s]+"))
-            .map { it.trim() }.filter { it.isNotEmpty() }
-        val cleaned = parts.map(::extractHash).filter { vkHashRe.matches(it) }
-        return cleaned.distinct().joinToString(",")
-    }
 
 }

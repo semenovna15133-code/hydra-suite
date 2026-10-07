@@ -50,37 +50,48 @@ class MultiProtocolManager(private val context: Context) {
         }
     }
 
-    suspend fun startWdtt(vkHashes: String, connPassword: String, workers: Int = 24): Boolean = withContext(Dispatchers.IO) {
+        suspend fun startWdtt(serverAddr: String, vkHashes: String, connPassword: String, workers: Int = 24): Boolean = withContext(Dispatchers.IO) {
         try {
             val binary = extractBinary("wdtt-client")
-            wdttProcess = ProcessBuilder(listOf(
+            Log.i(TAG, "WDTT binary: ${binary.absolutePath}")
+            Log.i(TAG, "WDTT args: -mode socks5 -socks-listen 127.0.0.1:$WDTT_SOCKS_PORT -vk $vkHashes -peer $serverAddr -password <redacted> -n $workers")
+            
+            // Правильные флаги: одинарные дефисы, имена как в help
+            val args = listOf(
                 binary.absolutePath,
-                "--mode", "socks5",
-                "--socks-listen", "127.0.0.1:$WDTT_SOCKS_PORT",
-                "--vk-hashes", vkHashes,
-                "--conn-password", connPassword,
-                "--workers", workers.toString()
-            )).redirectErrorStream(false).start()
+                "-mode", "socks5",
+                "-socks-listen", "127.0.0.1:$WDTT_SOCKS_PORT",
+                "-socks-udp",
+                "-vk", vkHashes,
+                "-peer", serverAddr,
+                "-password", connPassword,
+                "-n", workers.toString(),
+                "-captcha-mode", "auto",
+                "-vkcalls-preflight",
+                "-turn-stream-first",
+                "-device-id", android.os.Build.MODEL.take(30)
+            )
+            Log.i(TAG, "WDTT full cmd: ${args.joinToString(" ")}")
+            
+            wdttProcess = ProcessBuilder(args).redirectErrorStream(false).start()
             streamToLogcat(wdttProcess!!, "wdtt-client")
-            // fallback: если бинарник не знает флаг --workers, он умрёт мгновенно
-            val exited = wdttProcess!!.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            
+            // Проверяем что процесс не умер сразу (wrong flags → мгновенная смерть с -h)
+            val exited = wdttProcess!!.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
             if (exited) {
-                Log.w(TAG, "wdtt-client died early (exit=${wdttProcess!!.exitValue()}), retry without --workers")
-                wdttProcess = ProcessBuilder(listOf(
-                    binary.absolutePath,
-                    "--mode", "socks5",
-                    "--socks-listen", "127.0.0.1:$WDTT_SOCKS_PORT",
-                    "--vk-hashes", vkHashes,
-                    "--conn-password", connPassword
-                )).redirectErrorStream(false).start()
-                streamToLogcat(wdttProcess!!, "wdtt-client")
+                Log.e(TAG, "wdtt-client died immediately, exit=${wdttProcess!!.exitValue()}")
+                return@withContext false
             }
-            Log.i(TAG, "WDTT started, port=$WDTT_SOCKS_PORT, workers=$workers, hashes=${vkHashes.split(",").size}")
-
+            
+            Log.i(TAG, "WDTT started, listen=127.0.0.1:$WDTT_SOCKS_PORT, workers=$workers, hashes=${vkHashes.split(",").size}")
+            
+            // Ждём поднятия SOCKS-порта
+            Thread.sleep(2500)
+            
             startBridgeBinary(WDTT_SOCKS_PORT)
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start WDTT: ${e.message}")
+            Log.e(TAG, "Failed to start WDTT: ${e.message}", e)
             false
         }
     }
