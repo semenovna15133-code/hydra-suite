@@ -35,7 +35,7 @@ object SmartConnectManager {
     }
     
     suspend fun autoConnect(context: Context, keyId: String): TunnelProvider? {
-        Log.i(TAG, "Starting Smart Connect...")
+        Log.w(TAG, "Starting Smart Connect... (trace below)", Exception("autoConnect-trace"))
         
         // Парсим keyfile и строим провайдеры динамически
         val keysDir = java.io.File(context.filesDir, "keys")

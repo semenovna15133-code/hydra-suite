@@ -1,6 +1,7 @@
 package main
 
 import (
+	"gvisor.dev/gvisor/pkg/waiter"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -46,7 +47,11 @@ func initStats() {
 			ms := int64(time.Since(sessionStart).Milliseconds())
 			statsMu.Unlock()
 			data := fmt.Sprintf("{\"rx_bytes\":%d,\"tx_bytes\":%d,\"session_ms\":%d}", rx, tx, ms)
-			os.WriteFile(statsFilePath, []byte(data), 0666)
+			if err := os.WriteFile(statsFilePath, []byte(data), 0666); err != nil {
+				log.Printf("[hb] stats write ERROR: %v (path=%s)", err, statsFilePath)
+			} else {
+				log.Printf("[hb] stats WRITTEN to %s", statsFilePath)
+			}
 			log.Printf("[hb] stats rx_bytes=%d tx_bytes=%d session_ms=%d", rx, tx, ms)
 		}
 	}()
@@ -178,19 +183,20 @@ func main() {
 		log.Fatalf("CreateNIC: %v", err)
 	}
 	netStack.SetRouteTable([]tcpip.Route{{
-		Destination: tcpip.AddressWithPrefix{Address: tcpip.Address{}, PrefixLen: 0},
+		Destination: tcpip.AddressWithPrefix{}.Subnet(),
 		NIC:         1,
 	}})
 
 	// TCP: промышленный forwarder
 	tf := tcp.NewForwarder(netStack, 0, 512, func(r *tcp.ForwarderRequest) {
 		id := r.ID()
-		ep, err := r.CreateEndpoint()
+		var queue waiter.Queue
+		ep, err := r.CreateEndpoint(&queue)
 		if err != nil {
 			log.Printf("[hb] tcp ep: %v", err)
 			return
 		}
-		conn := gonet.NewTCPConn(netStack, ep, ipv4.ProtocolNumber)
+		conn := gonet.NewTCPConn(&queue, ep)
 		log.Printf("[hb] TCP %s:%d -> %s:%d", id.RemoteAddress, id.RemotePort, id.LocalAddress, id.LocalPort)
 		go tcpSplice(conn, id)
 	})
@@ -202,11 +208,12 @@ func main() {
 		if id.LocalPort != 53 {
 			return
 		}
-		ep, err := r.CreateEndpoint()
+		var queue waiter.Queue
+		ep, err := r.CreateEndpoint(&queue)
 		if err != nil {
 			return
 		}
-		conn := gonet.NewUDPConn(netStack, ep)
+		conn := gonet.NewUDPConn(netStack, &queue, ep)
 		go dnsHandle(conn, id)
 	})
 	netStack.SetTransportProtocolHandler(udp.ProtocolNumber, uf.HandlePacket)

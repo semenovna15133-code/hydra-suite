@@ -27,12 +27,40 @@ class MultiProtocolManager(private val context: Context) {
     private var wdttProcess: Process? = null
     private var bridgeProcess: Process? = null
 
+    @Volatile var started: Boolean = false
+    fun processesAlive(): Boolean =
+        (wdttProcess?.isAlive == true) || (aivpnProcess?.isAlive == true) || (bridgeProcess?.isAlive == true)
+
     @Volatile private var rxBytes: Long = 0
     @Volatile private var txBytes: Long = 0
     fun getTrafficStats(): Pair<Long, Long> = Pair(rxBytes, txBytes)
 
+
+    /** Убивает все висячие процессы своих бинарников (same uid) через /proc. */
+    private fun killOrphans(substr: String) {
+        try {
+            val myPid = android.os.Process.myPid()
+            java.io.File("/proc").listFiles()?.forEach { d ->
+                val pid = d.name.toIntOrNull() ?: return@forEach
+                if (pid == myPid) return@forEach
+                try {
+                    val cmd = java.io.File(d, "cmdline").readText()
+                    if (cmd.contains(substr)) {
+                        android.os.Process.killProcess(pid)
+                        Log.w(TAG, "killed orphan: $substr pid=$pid")
+                    }
+                } catch (_: Exception) { }
+            }
+        } catch (_: Exception) { }
+    }
+
     suspend fun startAivpn(connKey: String): Boolean = withContext(Dispatchers.IO) {
         try {
+            aivpnProcess?.destroy()
+            wdttProcess?.destroy()
+            killOrphans("libaivpn_client.so")
+            killOrphans("libhydra_bridge.so")
+            started = true
             val binary = extractBinary("aivpn-client")
             aivpnProcess = ProcessBuilder(listOf(
                 binary.absolutePath,
@@ -52,6 +80,11 @@ class MultiProtocolManager(private val context: Context) {
 
         suspend fun startWdtt(serverAddr: String, vkHashes: String, connPassword: String, workers: Int = 24): Boolean = withContext(Dispatchers.IO) {
         try {
+            wdttProcess?.destroy()
+            aivpnProcess?.destroy()
+            killOrphans("libwdtt_client.so")
+            killOrphans("libhydra_bridge.so")
+            started = true
             val binary = extractBinary("wdtt-client")
             Log.i(TAG, "WDTT binary: ${binary.absolutePath}")
             Log.i(TAG, "WDTT args: -mode socks5 -socks-listen 127.0.0.1:$WDTT_SOCKS_PORT -vk $vkHashes -peer $serverAddr -password <redacted> -n $workers")
@@ -73,7 +106,9 @@ class MultiProtocolManager(private val context: Context) {
             )
             Log.i(TAG, "WDTT full cmd: ${args.joinToString(" ")}")
             
-            wdttProcess = ProcessBuilder(args).redirectErrorStream(false).start()
+            val pb = ProcessBuilder(args).redirectErrorStream(false)
+            pb.environment()["GODEBUG"] = "netdns=go,netcgo=0"
+            wdttProcess = pb.start()
             streamToLogcat(wdttProcess!!, "wdtt-client")
             
             // Проверяем что процесс не умер сразу (wrong flags → мгновенная смерть с -h)
@@ -99,6 +134,7 @@ class MultiProtocolManager(private val context: Context) {
     private fun startBridgeBinary(socksPort: Int) {
         bridgeProcess?.destroy()
         bridgeProcess = null
+        killOrphans("libhydra_bridge.so")
         val bridge = extractBinary("hydra-bridge")
         bridgeProcess = ProcessBuilder(listOf(
             bridge.absolutePath, BRIDGE_SOCKET, "127.0.0.1:$socksPort"
@@ -139,6 +175,15 @@ class MultiProtocolManager(private val context: Context) {
         wdttProcess = null
         bridgeProcess?.destroy()
         bridgeProcess = null
+        started = false
+        // Удаляем файл статистики чтобы новый bridge стартовал с нуля
+        try {
+            val statsFile = java.io.File(context.filesDir, "hb_stats.json")
+            if (statsFile.exists()) statsFile.delete()
+            Log.i(TAG, "Stats file deleted")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to delete stats file: ${e.message}")
+        }
         Log.i(TAG, "All stopped (including hydra-bridge)")
     }
 

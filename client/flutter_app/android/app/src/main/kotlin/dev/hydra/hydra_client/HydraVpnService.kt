@@ -68,11 +68,16 @@ class HydraVpnService : VpnService() {
 
         /** Возраст последнего handshake (мс); -1 = туннель не запущен */
         /** JSON статистики туннеля: rx/tx bytes, session_ms */
+        fun mpState(): Pair<Boolean, Boolean>? =
+            instance?.multiProtocolManager?.let { Pair(it.started, it.processesAlive()) }
+
         fun statsJson(): String {
             return try {
                 val f = java.io.File(instance?.filesDir?.path + "/hb_stats.json")
+                android.util.Log.d("StatsFile", "path=${f.absolutePath}, exists=${f.exists()}, len=${if (f.exists()) f.length() else -1}")
                 if (f.exists()) f.readText() else """{"rx_bytes":0,"tx_bytes":0,"session_ms":0}"""
             } catch (e: Exception) {
+                android.util.Log.e("StatsFile", "error: ${e.message}")
                 """{"rx_bytes":0,"tx_bytes":0,"session_ms":0}"""
             }
         }
@@ -209,6 +214,7 @@ class HydraVpnService : VpnService() {
 
     
     private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
+        try { java.io.File(filesDir, "hb_stats.json").delete() } catch (_: Exception) {}
         Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
         multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
         
@@ -267,6 +273,7 @@ class HydraVpnService : VpnService() {
         isRunning = true
         
         multiProtocolManager!!.startBridge(pfd, protocol)
+        isHandshakeComplete = true
         Log.i(TAG, "$protocol started with SOCKS5 bridge")
         setActiveProtocol(protocol)
         isHandshakeComplete = true
