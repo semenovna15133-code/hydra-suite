@@ -69,8 +69,7 @@ object SettingsStore {
     }
 
     fun normalizeHashes(raw: String): String {
-        val parts = raw.split(",", "
-", "\s+".toRegex())
+        val parts = raw.split(Regex("[,\\s]+"))
             .map { it.trim() }.filter { it.isNotEmpty() }
         val cleaned = parts.map(::extractHash).filter { vkHashRe.matches(it) }
         return cleaned.distinct().joinToString(",")

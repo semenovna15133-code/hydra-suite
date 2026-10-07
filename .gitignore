@@ -43,3 +43,4 @@ wheels/
 # Android signing (release)
 client/flutter_app/android/hydra-release.keystore
 client/flutter_app/android/key.properties
+wdtt-plus/
