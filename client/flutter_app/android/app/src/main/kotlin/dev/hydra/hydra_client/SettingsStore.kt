@@ -10,6 +10,7 @@ object SettingsStore {
     private const val KEY_WORKERS = "workers"
     private const val KEY_ADVANCED_UI = "advanced_ui"
     private const val KEY_ONBOARDED = "onboarded"
+    private const val KEY_PREFERRED_PROTO = "preferred_protocol"
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -38,4 +39,41 @@ object SettingsStore {
     fun setAdvancedUi(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_ADVANCED_UI, v).apply()
     fun isOnboarded(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_ONBOARDED, false)
     fun setOnboarded(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_ONBOARDED, v).apply()
+
+    /** Предпочитаемый протокол: "auto"|"awg"|"aivpn"|"wdtt". */
+    fun getPreferredProtocol(ctx: Context): String {
+        val v = prefs(ctx).getString(KEY_PREFERRED_PROTO, "auto") ?: "auto"
+        return if (v in listOf("auto", "awg", "aivpn", "wdtt")) v else "auto"
+    }
+    fun setPreferredProtocol(ctx: Context, v: String) =
+        prefs(ctx).edit().putString(KEY_PREFERRED_PROTO, v).apply()
+
+    /** Нормализация списка VK-хешей: из ссылки vk.ru/call/join/XXX оставляем XXX. */
+    private val vkHashRe = Regex("^[A-Za-z0-9_\\-]{16,512}$")
+    fun extractHash(input: String): String {
+        var s = input.trim()
+        // Убираем обрамляющие кавычки/скобки
+        while (s.length >= 2 && (s[0] in "<>\"'" && s.last() in "<>\"'")) {
+            s = s.substring(1, s.length - 1)
+        }
+        val lower = s.lowercase()
+        val i = lower.indexOf("/call/join/")
+        s = when {
+            i >= 0 -> s.substring(i + "/call/join/".length)
+            lower.startsWith("http://") || lower.startsWith("https://") -> return ""
+            else -> s
+        }
+        val stop = s.indexOfFirst { it == '?' || it == '#' || it == '/' || it.isWhitespace() }
+        if (stop >= 0) s = s.substring(0, stop)
+        return s.trimEnd('/').trim()
+    }
+
+    fun normalizeHashes(raw: String): String {
+        val parts = raw.split(",", "
+", "\s+".toRegex())
+            .map { it.trim() }.filter { it.isNotEmpty() }
+        val cleaned = parts.map(::extractHash).filter { vkHashRe.matches(it) }
+        return cleaned.distinct().joinToString(",")
+    }
+
 }

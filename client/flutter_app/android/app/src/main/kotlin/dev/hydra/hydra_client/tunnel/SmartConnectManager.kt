@@ -72,6 +72,7 @@ object SmartConnectManager {
         
         val whiteList = EnvironmentProbe.whiteListDetected
         val hashCount = dev.hydra.hydra_client.SettingsStore.getHashList(context).size
+        val preferred = dev.hydra.hydra_client.SettingsStore.getPreferredProtocol(context)
 
         val scored = providers.map { p ->
             var sc = p.score(probe)
@@ -92,9 +93,22 @@ object SmartConnectManager {
             return null
         }
         
-        Log.i(TAG, "Providers scored: ${scored.map { "${it.first.name}=${it.second}" }}")
+        Log.i(TAG, "Providers scored: ${scored.map { "${it.first.name}=${it.second}" }}, preferred=$preferred")
         
-        val best = scored.firstOrNull { it.second > 0 }
+        // Если пользователь выбрал конкретный протокол — пробуем его первым
+        var best: Pair<TunnelProvider, Int>? = null
+        if (preferred != "auto") {
+            val pref = scored.find { it.first.name.equals(preferred, ignoreCase = true) }
+            if (pref != null && pref.second > 0) {
+                best = pref
+                Log.i(TAG, "Using preferred protocol: ${pref.first.name}")
+            } else if (pref != null) {
+                Log.w(TAG, "Preferred ${pref.first.name} scored 0, falling back to best available")
+            }
+        }
+        if (best == null) {
+            best = scored.firstOrNull { it.second > 0 }
+        }
         if (best == null) {
             Log.e(TAG, "No viable providers (all scored 0)")
             return null

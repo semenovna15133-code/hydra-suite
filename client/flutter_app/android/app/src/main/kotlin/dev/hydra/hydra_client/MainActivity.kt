@@ -307,13 +307,15 @@ class MainActivity : FlutterActivity() {
                     "workers" to SettingsStore.getManualWorkers(this),
                     "resolvedWorkers" to SettingsStore.resolveWorkers(this),
                     "advancedUi" to SettingsStore.isAdvancedUi(this),
-                    "onboarded" to SettingsStore.isOnboarded(this)
+                    "onboarded" to SettingsStore.isOnboarded(this),
+                    "preferredProtocol" to SettingsStore.getPreferredProtocol(this)
                 ))
                 "setVkHashes" -> { SettingsStore.setVkHashes(this, call.argument<String>("value") ?: ""); result.success(true) }
                 "setAutoWorkers" -> { SettingsStore.setWorkersMode(this, call.argument<Boolean>("auto") ?: true); result.success(true) }
                 "setWorkers" -> { SettingsStore.setManualWorkers(this, call.argument<Int>("workers") ?: 24); result.success(true) }
                 "setAdvancedUi" -> { SettingsStore.setAdvancedUi(this, call.argument<Boolean>("value") ?: false); result.success(true) }
                 "setOnboarded" -> { SettingsStore.setOnboarded(this, call.argument<Boolean>("value") ?: false); result.success(true) }
+                "setPreferredProtocol" -> { SettingsStore.setPreferredProtocol(this, call.argument<String>("value") ?: "auto"); result.success(true) }
                 else -> result.notImplemented()
             }
         }
