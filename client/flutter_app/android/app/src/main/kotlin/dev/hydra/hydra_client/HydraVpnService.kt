@@ -68,6 +68,9 @@ class HydraVpnService : VpnService() {
 
         /** Возраст последнего handshake (мс); -1 = туннель не запущен */
         /** JSON статистики туннеля: rx/tx bytes, session_ms */
+        fun wdttStats(): String? =
+            instance?.multiProtocolManager?.takeIf { it.started }?.wdttStatsJson()
+
         fun mpState(): Pair<Boolean, Boolean>? =
             instance?.multiProtocolManager?.let { Pair(it.started, it.processesAlive()) }
 

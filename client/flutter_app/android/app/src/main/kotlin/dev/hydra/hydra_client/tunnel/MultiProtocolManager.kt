@@ -28,6 +28,30 @@ class MultiProtocolManager(private val context: Context) {
     private var bridgeProcess: Process? = null
 
     @Volatile var started: Boolean = false
+    @Volatile var startedAt: Long = 0L
+
+    private fun debounce(tag: String): Boolean {
+        val age = System.currentTimeMillis() - startedAt
+        return if (started && processesAlive() && age < 20_000) {
+            Log.w(TAG, "$tag debounced: tunnel alive, age=${age}ms")
+            true
+        } else false
+    }
+    @Volatile var wdttWorkers: Int = 0
+    @Volatile var wdttHashes: Int = 0
+    @Volatile var wdttActive: Int = 0
+
+    fun wdttStatsJson(): String =
+        """{"workers":$wdttWorkers,"hashes":$wdttHashes,"active":$wdttActive}"""
+
+    private fun parseWdttLine(tag: String, line: String) {
+        if (tag != "wdtt-client") return
+        try {
+            Regex("Воркеров: (\\d+)").find(line)?.let { wdttWorkers = it.groupValues[1].toInt() }
+            Regex("Хешей: (\\d+)").find(line)?.let { wdttHashes = it.groupValues[1].toInt() }
+            Regex("Активных: (\\d+)").find(line)?.let { wdttActive = it.groupValues[1].toInt() }
+        } catch (_: Exception) { }
+    }
     fun processesAlive(): Boolean =
         (wdttProcess?.isAlive == true) || (aivpnProcess?.isAlive == true) || (bridgeProcess?.isAlive == true)
 
@@ -56,11 +80,13 @@ class MultiProtocolManager(private val context: Context) {
 
     suspend fun startAivpn(connKey: String): Boolean = withContext(Dispatchers.IO) {
         try {
+            if (debounce("startAivpn")) return@withContext true
             aivpnProcess?.destroy()
             wdttProcess?.destroy()
             killOrphans("libaivpn_client.so")
             killOrphans("libhydra_bridge.so")
             started = true
+            startedAt = System.currentTimeMillis()
             val binary = extractBinary("aivpn-client")
             aivpnProcess = ProcessBuilder(listOf(
                 binary.absolutePath,
@@ -80,11 +106,13 @@ class MultiProtocolManager(private val context: Context) {
 
         suspend fun startWdtt(serverAddr: String, vkHashes: String, connPassword: String, workers: Int = 24): Boolean = withContext(Dispatchers.IO) {
         try {
+            if (debounce("startWdtt")) return@withContext true
             wdttProcess?.destroy()
             aivpnProcess?.destroy()
             killOrphans("libwdtt_client.so")
             killOrphans("libhydra_bridge.so")
             started = true
+            startedAt = System.currentTimeMillis()
             val binary = extractBinary("wdtt-client")
             Log.i(TAG, "WDTT binary: ${binary.absolutePath}")
             Log.i(TAG, "WDTT args: -mode socks5 -socks-listen 127.0.0.1:$WDTT_SOCKS_PORT -vk $vkHashes -peer $serverAddr -password <redacted> -n $workers")
@@ -190,14 +218,14 @@ class MultiProtocolManager(private val context: Context) {
     private fun streamToLogcat(process: Process, tag: String) {
         Thread {
             try {
-                process.inputStream.bufferedReader().forEachLine { Log.i("[$tag]", it) }
+                process.inputStream.bufferedReader().forEachLine { parseWdttLine(tag, it); Log.i("[$tag]", it) }
             } catch (e: Exception) {
                 Log.d(TAG, "$tag stdout closed")
             }
         }.start()
         Thread {
             try {
-                process.errorStream.bufferedReader().forEachLine { Log.e("[$tag]", it) }
+                process.errorStream.bufferedReader().forEachLine { parseWdttLine(tag, it); Log.e("[$tag]", it) }
             } catch (e: Exception) {
                 Log.d(TAG, "$tag stderr closed")
             }
