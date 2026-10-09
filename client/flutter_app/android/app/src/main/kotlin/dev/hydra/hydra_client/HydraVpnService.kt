@@ -246,18 +246,20 @@ class HydraVpnService : VpnService() {
         
         if (!started) throw IllegalStateException("Failed to start $protocol binary")
         
-        val clientIp = try {
+        val clientIpRaw = try {
             val payload = aivpnKey.removePrefix("aivpn://")
             val json = String(android.util.Base64.decode(payload, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))
-            org.json.JSONObject(json).optString("i", "10.0.0.2")
+            org.json.JSONObject(json).optString("i", "10.0.0.2/32")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to decode client IP from aivpn key: ${e.message}")
-            "10.0.0.2"
+            "10.0.0.2/32"
         }
-        Log.i(TAG, "TUN client IP: $clientIp")
+        val clientIp = clientIpRaw.substringBefore("/")
+        val prefix = clientIpRaw.substringAfter("/").toIntOrNull() ?: 32
+        Log.i(TAG, "TUN client IP: $clientIp/$prefix")
 
         val builder = Builder()
-            .addAddress(clientIp, 32)
+            .addAddress(clientIp, prefix)
             .addDnsServer("1.1.1.1")
             .addRoute("0.0.0.0", 0)
             .setMtu(1500)
