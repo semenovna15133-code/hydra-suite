@@ -65,6 +65,8 @@ object SettingsStore {
     fun setKillSwitch(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("kill_switch", v).apply()
     fun getUpdateUrl(ctx: Context): String = prefs(ctx).getString("update_url", "") ?: ""
     fun setUpdateUrl(ctx: Context, v: String) = prefs(ctx).edit().putString("update_url", v).apply()
+    fun getSkippedUpdate(ctx: Context): String = prefs(ctx).getString("skipped_update", "") ?: ""
+    fun setSkippedUpdate(ctx: Context, v: String) = prefs(ctx).edit().putString("skipped_update", v).apply()
 
     /** Предпочитаемый протокол: "auto"|"awg"|"aivpn"|"wdtt". */
     fun getPreferredProtocol(ctx: Context): String {

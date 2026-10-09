@@ -319,6 +319,7 @@ class MainActivity : FlutterActivity() {
                     "dnsOverride" to SettingsStore.getDnsOverride(this),
                     "killSwitch" to SettingsStore.isKillSwitch(this),
                     "updateUrl" to SettingsStore.getUpdateUrl(this),
+                    "versionName" to (runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""),
                     "onboarded" to SettingsStore.isOnboarded(this),
                     "preferredProtocol" to SettingsStore.getPreferredProtocol(this)
                 ))
@@ -332,6 +333,22 @@ class MainActivity : FlutterActivity() {
                 "setDnsOverride" -> { SettingsStore.setDnsOverride(this, call.argument<String>("value") ?: ""); result.success(null) }
                 "setKillSwitch" -> { SettingsStore.setKillSwitch(this, call.argument<Boolean>("value") ?: false); result.success(null) }
                 "setUpdateUrl" -> { SettingsStore.setUpdateUrl(this, call.argument<String>("value") ?: ""); result.success(null) }
+                "getCacheDir" -> result.success(cacheDir.absolutePath)
+                "getAbis" -> result.success(android.os.Build.SUPPORTED_ABIS.toList())
+                "getSkippedUpdate" -> result.success(SettingsStore.getSkippedUpdate(this))
+                "setSkippedUpdate" -> { SettingsStore.setSkippedUpdate(this, call.argument<String>("value") ?: ""); result.success(null) }
+                "installApk" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    val f = java.io.File(path)
+                    if (!f.exists()) { result.error("NO_FILE", path, null) } else {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+                        val intent = Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        startActivity(intent)
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
