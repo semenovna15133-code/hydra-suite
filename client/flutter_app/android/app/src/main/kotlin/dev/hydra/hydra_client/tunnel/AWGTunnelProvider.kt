@@ -5,12 +5,14 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import dev.hydra.hydra_client.HydraVpnService
+import keyfilekt.Peer
 import tunnel.NetworkProbeResult
 
 class AWGTunnelProvider(
     private val context: Context,
     override val serverId: String,
-    override val label: String
+    override val label: String,
+    private val peer: Peer = Peer()
 ) : TunnelProvider {
     companion object {
         private const val TAG = "AWGTunnelProvider"
@@ -20,6 +22,7 @@ class AWGTunnelProvider(
 
     
     override val name = "AmneziaWG"
+    override val endpoint = peer.endpoint
     
     override fun score(probe: NetworkProbeResult?): Int {
         // AWG временно отключён (gomobile сломан) — не участвует в скоринге,

@@ -133,17 +133,20 @@ class MainActivity : FlutterActivity() {
                     val rtt = HealthMonitor.lastRttMs
                     val prov = dev.hydra.hydra_client.tunnel.SmartConnectManager.active
                     val protoName = prov?.name ?: "AmneziaWG"
+                    val endpoint = prov?.endpoint ?: ""
                     val server = prov?.serverId ?: "fi-polygon"
                     val country = when (server.split("-").first()) {
                         "fi" -> "Finland"; "de" -> "Germany"; "nl" -> "Netherlands"
                         else -> server.split("-").first().uppercase()
                     }
-                    val info = if (rtt > 0) {
-                        "$protoName · $server · $country · ${rtt}ms"
-                    } else {
-                        "$protoName · $server · $country"
+                    val json = org.json.JSONObject().apply {
+                        put("protocol", protoName)
+                        put("endpoint", endpoint)
+                        put("serverId", server)
+                        put("country", country)
+                        put("rtt", rtt)
                     }
-                    result.success(info)
+                    result.success(json.toString())
                 }
                                 "disconnect" -> {
                     Log.i("Disconnect", "MethodChannel: disconnect called")

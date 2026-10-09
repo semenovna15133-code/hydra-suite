@@ -19,6 +19,7 @@ class WDTTTunnelProvider(
     }
 
     override val name = "WDTT"
+    override val endpoint = peer.endpoint
 
     override fun score(probe: NetworkProbeResult?): Int {
         if (probe == null) return 30

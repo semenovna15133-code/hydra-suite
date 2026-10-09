@@ -53,7 +53,7 @@ object SmartConnectManager {
         // Регистрируем провайдер для каждого peer
         for (peer in kf.peers) {
             val provider = when (peer.protocol) {
-                "awg" -> AWGTunnelProvider(context, peer.serverId, peer.label)
+                "awg" -> AWGTunnelProvider(context, peer.serverId, peer.label, peer)
                 "aivpn" -> AIVPNTunnelProvider(context, peer.serverId, peer.label, peer)
                 "wdtt" -> WDTTTunnelProvider(context, peer.serverId, peer.label, peer)
                 else -> {

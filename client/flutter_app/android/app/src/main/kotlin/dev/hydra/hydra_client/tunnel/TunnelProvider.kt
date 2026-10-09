@@ -6,6 +6,7 @@ interface TunnelProvider {
     val name: String
     val serverId: String
     val label: String
+    val endpoint: String
     
     fun score(probe: NetworkProbeResult?): Int
     fun connect(keyId: String): Boolean

@@ -19,6 +19,7 @@ class AIVPNTunnelProvider(
     }
 
     override val name = "AIVPN"
+    override val endpoint = peer.endpoint
 
     override fun score(probe: NetworkProbeResult?): Int {
         if (probe == null) return 40
