@@ -56,6 +56,16 @@ object SettingsStore {
     fun isOnboarded(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_ONBOARDED, false)
     fun setOnboarded(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_ONBOARDED, v).apply()
 
+    // Продвинутый режим: туннель и обновления
+    fun getMtu(ctx: Context): Int = prefs(ctx).getInt("mtu", 1420)
+    fun setMtu(ctx: Context, v: Int) = prefs(ctx).edit().putInt("mtu", v).apply()
+    fun getDnsOverride(ctx: Context): String = prefs(ctx).getString("dns_override", "") ?: ""
+    fun setDnsOverride(ctx: Context, v: String) = prefs(ctx).edit().putString("dns_override", v).apply()
+    fun isKillSwitch(ctx: Context): Boolean = prefs(ctx).getBoolean("kill_switch", false)
+    fun setKillSwitch(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("kill_switch", v).apply()
+    fun getUpdateUrl(ctx: Context): String = prefs(ctx).getString("update_url", "") ?: ""
+    fun setUpdateUrl(ctx: Context, v: String) = prefs(ctx).edit().putString("update_url", v).apply()
+
     /** Предпочитаемый протокол: "auto"|"awg"|"aivpn"|"wdtt". */
     fun getPreferredProtocol(ctx: Context): String {
         val v = prefs(ctx).getString(KEY_PREFERRED_PROTO, "auto") ?: "auto"

@@ -315,6 +315,10 @@ class MainActivity : FlutterActivity() {
                     "workers" to SettingsStore.getManualWorkers(this),
                     "resolvedWorkers" to SettingsStore.resolveWorkers(this),
                     "advancedUi" to SettingsStore.isAdvancedUi(this),
+                    "mtu" to SettingsStore.getMtu(this),
+                    "dnsOverride" to SettingsStore.getDnsOverride(this),
+                    "killSwitch" to SettingsStore.isKillSwitch(this),
+                    "updateUrl" to SettingsStore.getUpdateUrl(this),
                     "onboarded" to SettingsStore.isOnboarded(this),
                     "preferredProtocol" to SettingsStore.getPreferredProtocol(this)
                 ))
@@ -324,6 +328,10 @@ class MainActivity : FlutterActivity() {
                 "setAdvancedUi" -> { SettingsStore.setAdvancedUi(this, call.argument<Boolean>("value") ?: false); result.success(true) }
                 "setOnboarded" -> { SettingsStore.setOnboarded(this, call.argument<Boolean>("value") ?: false); result.success(true) }
                 "setPreferredProtocol" -> { SettingsStore.setPreferredProtocol(this, call.argument<String>("value") ?: "auto"); result.success(true) }
+                "setMtu" -> { SettingsStore.setMtu(this, call.argument<Int>("mtu") ?: 1420); result.success(null) }
+                "setDnsOverride" -> { SettingsStore.setDnsOverride(this, call.argument<String>("value") ?: ""); result.success(null) }
+                "setKillSwitch" -> { SettingsStore.setKillSwitch(this, call.argument<Boolean>("value") ?: false); result.success(null) }
+                "setUpdateUrl" -> { SettingsStore.setUpdateUrl(this, call.argument<String>("value") ?: ""); result.success(null) }
                 else -> result.notImplemented()
             }
         }

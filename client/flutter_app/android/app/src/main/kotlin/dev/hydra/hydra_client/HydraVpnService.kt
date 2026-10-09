@@ -187,10 +187,10 @@ class HydraVpnService : VpnService() {
 
         val builder = Builder()
             .addAddress(peer.address.substringBefore("/"), peer.address.substringAfter("/").toInt())
-            .addDnsServer(peer.dns)
+            .addDnsServer(dev.hydra.hydra_client.SettingsStore.getDnsOverride(this).ifBlank { peer.dns })
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
-            .setMtu(1420)
+            .setMtu(dev.hydra.hydra_client.SettingsStore.getMtu(this))
             .setSession("Hydra VPN")
 
         val pfd = builder.establish() ?: throw IllegalStateException("VpnService.establish() returned null")
@@ -260,9 +260,9 @@ class HydraVpnService : VpnService() {
 
         val builder = Builder()
             .addAddress(clientIp, prefix)
-            .addDnsServer("1.1.1.1")
+            .addDnsServer(dev.hydra.hydra_client.SettingsStore.getDnsOverride(this).ifBlank { "1.1.1.1" })
             .addRoute("0.0.0.0", 0)
-            .setMtu(1500)
+            .setMtu(dev.hydra.hydra_client.SettingsStore.getMtu(this))
             .setSession("Hydra VPN ($protocol)")
 
         // Исключаем собственное приложение из VPN-роутинга:
