@@ -231,6 +231,9 @@ class HydraVpnService : VpnService() {
                 val vkHashes = intent?.getStringExtra(EXTRA_WDTT_VK_HASHES) ?: ""
                 val workers = intent?.getIntExtra(EXTRA_WDTT_WORKERS, 24) ?: 24
                 Log.i(TAG, "Starting WDTT: endpoint='$endpoint', vkHashes='$vkHashes', password='$wdttPassword', workers=$workers")
+                if (vkHashes.isBlank() || vkHashes.split(",").all { it.isBlank() }) {
+                    throw IllegalStateException("WDTT: нет VK-хешей. Добавьте хотя бы один хеш в настройках")
+                }
                 multiProtocolManager!!.startWdtt(
                     endpoint,
                     vkHashes,

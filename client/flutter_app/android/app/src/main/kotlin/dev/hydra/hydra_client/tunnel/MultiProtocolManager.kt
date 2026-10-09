@@ -106,6 +106,10 @@ class MultiProtocolManager(private val context: Context) {
 
         suspend fun startWdtt(serverAddr: String, vkHashes: String, connPassword: String, workers: Int = 24): Boolean = withContext(Dispatchers.IO) {
         try {
+            if (vkHashes.isBlank() || vkHashes.split(",").all { it.isBlank() }) {
+                Log.e(TAG, "startWdtt: empty vkHashes — refusing to spawn")
+                return@withContext false
+            }
             if (debounce("startWdtt")) return@withContext true
             wdttProcess?.destroy()
             aivpnProcess?.destroy()
