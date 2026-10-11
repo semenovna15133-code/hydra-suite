@@ -1,0 +1,30 @@
+5a7b193 feat: протокольно-зависимые настройки + автообновление GitHub Releases
+61e3f8c feat: продвинутый режим настроек
+799df79 cosmetic: correct endpoint in status for active protocol
+4cf4836 feat: AWG/AIVPN клиент-стек восстановлен в Enforcing
+d9a8777 fix: live stats poll-loop + UX-защита пустых VK-хешей
+e760dd7 fix: bridge rollback to proven v2 tun2socks (data-plane works)
+2882a07 feat: WDTT end-to-end + connect с первого нажатия
+8027da9 fix: cgo-stub для anet через getifaddrs (без netlink, обход SELinux)
+7162560 fix: экранирование regex в SettingsStore.kt (\s и \-)
+d848cf9 feat: чипы выбора протокола + preferred_protocol в SmartConnect; нормализация VK-хешей при сохранении (из ссылки в код)
+71062b2 fix: permission ACCESS_NETWORK_STATE + gitignore для lib/ + fallback в EnvironmentProbe
+b79a9b5 settings: SettingsStore + канал dev.hydra/settings + VK-хеши/воркеры доходят до wdtt-client; white-list детект в скоринге
+76694cb docs: breadth-first завершён, все 3 протокола в Smart Connect
+972ae15 docs: AWG restored + урок dex-коллизий
+52526ef fix: keyfilekt с peerCount/expiresAtString (полный парсер)
+b93f9d4 Реставрация AWG: удалена Kotlin-заглушка Keyfile (конфликт с AAR)
+6462d63 Включён AWG: AAR подключён, заглушка удалена, скоринг активен
+61a209d bridge v4: gVisor netstack data-plane
+065f537 bridge v3: flow control (fix struct literal syntax)
+7e7353c bridge v2: TCP dedup по seq + очередь ретрансмитов + счётчики dup/retrans
+012fae6 docs: финальный статус MVP + уроки дебаггинга
+4b906bc ГОТОВО: live-статистика трафика в UI (bridge -> files/hb_stats.json -> Kotlin -> Flutter)
+360ebf3 stats: bridge пишет в filesDir (SELinux-safe), Kotlin передаёт путь как 3-й arg
+ac79187 fix: удаление мусорных строк в HydraVpnService.kt
+c23a599 fix: statsJson с фоновым кэшем (правильная структура Kotlin)
+b119257 debug: логирование sendTCP/socks.Read + statsJson return
+dfccd03 UI: statsJson через фоновый кэш logcat (fix ANR main-thread exec)
+badee50 UI: bridge считает rx/tx, statsJson читает logcat [hb] stats
+6b88f61 UI: убран лимит polling, getTunnelStatus упрощён, statsJson читает /proc/net/dev
+61a3699 docs: статус data-plane + известные ограничения MVP
