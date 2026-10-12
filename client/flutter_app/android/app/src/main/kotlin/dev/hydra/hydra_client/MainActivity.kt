@@ -142,6 +142,29 @@ class MainActivity : FlutterActivity() {
                     result.success(prefs.getString("active_key_id", null))
                 }
 
+                "parseKeyText" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    if (text.isBlank() || !text.contains("[Hydra]")) {
+                        result.error("INVALID_FORMAT", "Not a Hydra keyfile", null)
+                        return@setMethodCallHandler
+                    }
+                    val tmp = File(cacheDir, "pending_text.key")
+                    try {
+                        tmp.writeText(text)
+                        val kf: KeyFile = Keyfile.parse(tmp.absolutePath)
+                        val dest = File(keysDir, "${sanitizeKeyId(kf.keyId)}.key")
+                        tmp.copyTo(dest, overwrite = true)
+                        if (prefs.getString("active_key_id", null) == null) {
+                            prefs.edit().putString("active_key_id", kf.keyId).apply()
+                        }
+                        result.success(parseToMap(kf))
+                    } catch (e: Exception) {
+                        result.error("PARSE_ERROR", e.message ?: "Unknown", e.toString())
+                    } finally {
+                        tmp.delete()
+                    }
+                }
+
                 "version" -> result.success("hydra-keyfile/1.2.0")
 
                 else -> result.notImplemented()
