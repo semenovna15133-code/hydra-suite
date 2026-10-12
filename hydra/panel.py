@@ -861,6 +861,64 @@ checksum_sha256 = {checksum}
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+
+@app.get("/keys/{key_id}/qr.png")
+async def key_qr_png(key_id: str):
+    """QR-код с содержимым keyfile (Key File v2 или v1)."""
+    import io
+    import json as _json
+    import qrcode
+    from fastapi.responses import Response
+    from .core.secrets import decrypt as _dec
+
+    key = await db.fetchone("SELECT * FROM access_keys WHERE key_id = ?", key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Key not found")
+
+    rows = await db.fetchall(
+        "SELECT server_id, protocol, client_config_enc FROM key_server_clients WHERE key_id = ?",
+        key_id,
+    )
+    peers = []
+    for r in rows or []:
+        try:
+            cfg = _json.loads(_dec(r["client_config_enc"], r["protocol"]))
+        except Exception:
+            continue
+        peers.append((r["protocol"], r["server_id"], cfg))
+
+    if peers:
+        client = None
+        if key["client_id"]:
+            client = await db.fetchone(
+                "SELECT display_name FROM clients WHERE id = ?", key["client_id"])
+        content = render_keyfile_v2(
+            key, client["display_name"] if client else "Client", peers)
+    else:
+        # Legacy v1 — тот же текст что в download_key_conf
+        import hashlib
+        panel_url_local = "http://localhost:8000"  # заглушка; QR для v1 редкость
+        checksum = hashlib.sha256(f"{key_id}{panel_url_local}".encode()).hexdigest()
+        expires = (key["expires_at"] or "never").replace("T", " ")
+        content = f"""[hydra]
+version = 1
+key = {key_id}
+expires_at = {expires}
+max_devices = {key['max_devices']}
+"""
+
+    buf = io.BytesIO()
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=6, border=2)
+    qr.add_data(content)
+    qr.make(fit=True)
+    qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=60"},
+    )
+
+
 # === Client (device) management (web UI) ===
 
 
