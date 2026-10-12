@@ -49,13 +49,27 @@ class MainActivity : FlutterActivity() {
                 i.action == Intent.ACTION_VIEW -> {
                     val uri = i.data ?: return
                     when (uri.scheme) {
-                        "content", "file" -> {
-                            val dir = java.io.File(cacheDir, "import").apply { mkdirs() }
-                            val tmp = java.io.File(dir, "pending.key")
+                        "content" -> {
+                            // Реальные файловые менеджеры шлют content:// + grant
+                            val tmp = java.io.File(cacheDir, "pending.key")
                             contentResolver.openInputStream(uri)?.use { inp ->
                                 tmp.outputStream().use { out -> inp.copyTo(out) }
                             } ?: return
                             SettingsStore.setPendingImport(this, tmp.absolutePath)
+                        }
+                        "file" -> {
+                            // file:// на Android 10+ обычно запрещён (Scoped Storage):
+                            // пробуем прочитать, при отказе оставляем URI — Flutter объяснит
+                            val tmp = java.io.File(cacheDir, "pending.key")
+                            try {
+                                java.io.FileInputStream(java.io.File(uri.path ?: "")).use { inp ->
+                                    tmp.outputStream().use { out -> inp.copyTo(out) }
+                                }
+                                SettingsStore.setPendingImport(this, tmp.absolutePath)
+                            } catch (e: Exception) {
+                                android.util.Log.w("HydraImport", "file:// недоступен: ${e.message}")
+                                SettingsStore.setPendingImport(this, uri.toString())
+                            }
                         }
                         else -> SettingsStore.setPendingImport(this, uri.toString())
                     }
