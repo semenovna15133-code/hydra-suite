@@ -37,6 +37,45 @@ class MainActivity : FlutterActivity() {
         File(filesDir, "keys").apply { mkdirs() }
     }
 
+    /** QR / шаринг / файл / диплинк: кладём payload в pending_import */
+    private fun handleIncomingIntent(intent: Intent?) {
+        val i = intent ?: return
+        try {
+            when {
+                i.action == Intent.ACTION_SEND && i.type == "text/plain" -> {
+                    val text = i.getStringExtra(Intent.EXTRA_TEXT)
+                    if (!text.isNullOrBlank()) SettingsStore.setPendingImport(this, text)
+                }
+                i.action == Intent.ACTION_VIEW -> {
+                    val uri = i.data ?: return
+                    when (uri.scheme) {
+                        "content", "file" -> {
+                            val dir = java.io.File(cacheDir, "import").apply { mkdirs() }
+                            val tmp = java.io.File(dir, "pending.key")
+                            contentResolver.openInputStream(uri)?.use { inp ->
+                                tmp.outputStream().use { out -> inp.copyTo(out) }
+                            } ?: return
+                            SettingsStore.setPendingImport(this, tmp.absolutePath)
+                        }
+                        else -> SettingsStore.setPendingImport(this, uri.toString())
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("HydraImport", "handleIncomingIntent: ${e.message}")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleIncomingIntent(intent)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         Keyfile.initRuntime()
@@ -336,6 +375,8 @@ class MainActivity : FlutterActivity() {
                 "getCacheDir" -> result.success(cacheDir.absolutePath)
                 "getAbis" -> result.success(android.os.Build.SUPPORTED_ABIS.toList())
                 "getSkippedUpdate" -> result.success(SettingsStore.getSkippedUpdate(this))
+                "getPendingImport" -> result.success(SettingsStore.getPendingImport(this))
+                "setPendingImport" -> { SettingsStore.setPendingImport(this, call.argument<String>("value") ?: ""); result.success(null) }
                 "setSkippedUpdate" -> { SettingsStore.setSkippedUpdate(this, call.argument<String>("value") ?: ""); result.success(null) }
                 "installApk" -> {
                     val path = call.argument<String>("path") ?: ""

@@ -27,6 +27,49 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- hydra://import/<base64 keyfile> : QR и диплинки -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="hydra"/>
+            </intent-filter>
+            <!-- шаринг текста из QR-сканеров и мессенджеров -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+            <!-- тап по скачанному keyfile (.key/.conf) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:mimeType="*/*"/>
+                <data android:pathPattern=".*\.key"/>
+                <data android:pathPattern=".*\.conf"/>
+            </intent-filter>
+            <!-- ссылки звонков VK: сразу извлекаем хеш -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="vk.ru" android:pathPrefix="/call/join/"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="vk.com" android:pathPrefix="/call/join/"/>
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="vk.com" android:pathPrefix="/call/join/"/>
+            </intent-filter>
         </activity>
         
         <service

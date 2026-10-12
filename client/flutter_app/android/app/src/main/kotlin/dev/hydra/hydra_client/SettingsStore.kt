@@ -67,6 +67,8 @@ object SettingsStore {
     fun setUpdateUrl(ctx: Context, v: String) = prefs(ctx).edit().putString("update_url", v).apply()
     fun getSkippedUpdate(ctx: Context): String = prefs(ctx).getString("skipped_update", "") ?: ""
     fun setSkippedUpdate(ctx: Context, v: String) = prefs(ctx).edit().putString("skipped_update", v).apply()
+    fun getPendingImport(ctx: Context): String = prefs(ctx).getString("pending_import", "") ?: ""
+    fun setPendingImport(ctx: Context, v: String) = prefs(ctx).edit().putString("pending_import", v).apply()
 
     /** Предпочитаемый протокол: "auto"|"awg"|"aivpn"|"wdtt". */
     fun getPreferredProtocol(ctx: Context): String {
