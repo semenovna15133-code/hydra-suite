@@ -50,19 +50,7 @@
                 <data android:pathPattern=".*\.key"/>
                 <data android:pathPattern=".*\.conf"/>
             </intent-filter>
-            <!-- ссылки звонков VK: сразу извлекаем хеш -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="vk.ru" android:pathPrefix="/call/join/"/>
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="vk.com" android:pathPrefix="/call/join/"/>
-            </intent-filter>
+
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
