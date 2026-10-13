@@ -23,6 +23,15 @@ import java.io.FileOutputStream
 import android.util.Log
 
 class MainActivity : FlutterActivity() {
+    override fun onResume() {
+        super.onResume()
+        android.util.Log.w("HydraUpdate", "onResume called")
+    }
+    override fun onPause() {
+        super.onPause()
+        android.util.Log.w("HydraUpdate", "onPause called")
+    }
+
     private val KEYFILE_CHANNEL = "dev.hydra/keyfile"
     private val TUNNEL_CHANNEL = "dev.hydra/tunnel"
     private val PICK_FILE_REQUEST = 1001
@@ -443,6 +452,15 @@ class MainActivity : FlutterActivity() {
                 "setSkippedUpdate" -> { SettingsStore.setSkippedUpdate(this, call.argument<String>("value") ?: ""); result.success(null) }
                 "getLastCheckedUpdate" -> result.success(SettingsStore.getLastCheckedUpdate(this))
                 "setLastCheckedUpdate" -> { SettingsStore.setLastCheckedUpdate(this, call.argument<String>("value") ?: ""); result.success(null) }
+                "getUpdateInProgressTs" -> {
+                    result.success(prefs.getLong("update_in_progress_ts", 0L))
+                }
+                "setUpdateInProgressTs" -> {
+                    val ts = call.argument<Long>("ts") ?: System.currentTimeMillis()
+                    prefs.edit().putLong("update_in_progress_ts", ts).apply()
+                    android.util.Log.w("HydraUpdate", "setUpdateInProgressTs: $ts")
+                    result.success(null)
+                }
                 "installApk" -> {
                     val path = call.argument<String>("path") ?: ""
                     val f = java.io.File(path)
@@ -450,7 +468,7 @@ class MainActivity : FlutterActivity() {
                         // Rate-limit: повторный intent перезапускает окно Play Protect — оно "моргает"
                         val now = System.currentTimeMillis()
                         val last = prefs.getLong("last_install_intent_ts", 0L)
-                        if (now - last < 15_000) {
+                        if (now - last < 300_000) {
                             result.error("RATE_LIMITED", "Install intent already fired recently", null)
                             return@setMethodCallHandler
                         }
