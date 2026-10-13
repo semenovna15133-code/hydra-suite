@@ -46,3 +46,9 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Временные артефакты упаковки (не коммитить!)
+app-patched.apk
+app-aligned.apk
+app-signed.apk
+*.apk
