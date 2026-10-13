@@ -27,7 +27,7 @@ echo "→ Публикую $TAG в $REPO"
 if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
   echo "⚠ Тег $TAG уже существует на remote"
   read -p "Перезаписать релиз? (y/N): " ans
-  if [ "$ans" = "y" ]; then
+  if [[ "$ans" =~ ^[yY]$ ]]; then
     gh release delete "$TAG" --yes 2>/dev/null || true
   else
     echo "Отменено"
