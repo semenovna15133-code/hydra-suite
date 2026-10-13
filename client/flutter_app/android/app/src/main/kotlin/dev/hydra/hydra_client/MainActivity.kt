@@ -421,6 +421,15 @@ class MainActivity : FlutterActivity() {
                     val path = call.argument<String>("path") ?: ""
                     val f = java.io.File(path)
                     if (!f.exists()) { result.error("NO_FILE", path, null) } else {
+                        // Rate-limit: повторный intent перезапускает окно Play Protect — оно "моргает"
+                        val now = System.currentTimeMillis()
+                        val last = prefs.getLong("last_install_intent_ts", 0L)
+                        if (now - last < 15_000) {
+                            result.error("RATE_LIMITED", "Install intent already fired recently", null)
+                            return@setMethodCallHandler
+                        }
+                        prefs.edit().putLong("last_install_intent_ts", now).apply()
+                        android.util.Log.w("HydraUpdate", "installApk intent fired: $path")
                         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
                         val intent = Intent(Intent.ACTION_VIEW)
                             .setDataAndType(uri, "application/vnd.android.package-archive")
