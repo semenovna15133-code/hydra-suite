@@ -415,6 +415,8 @@ class MainActivity : FlutterActivity() {
                 "getPendingImport" -> result.success(SettingsStore.getPendingImport(this))
                 "setPendingImport" -> { SettingsStore.setPendingImport(this, call.argument<String>("value") ?: ""); result.success(null) }
                 "setSkippedUpdate" -> { SettingsStore.setSkippedUpdate(this, call.argument<String>("value") ?: ""); result.success(null) }
+                "getLastCheckedUpdate" -> result.success(SettingsStore.getLastCheckedUpdate(this))
+                "setLastCheckedUpdate" -> { SettingsStore.setLastCheckedUpdate(this, call.argument<String>("value") ?: ""); result.success(null) }
                 "installApk" -> {
                     val path = call.argument<String>("path") ?: ""
                     val f = java.io.File(path)
