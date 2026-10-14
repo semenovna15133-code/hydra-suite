@@ -2,6 +2,7 @@ package dev.hydra.hydra_client
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.SharedPreferences
 import android.net.VpnService
 import android.os.Build
@@ -453,6 +454,12 @@ class MainActivity : FlutterActivity() {
                             .putExtra(Intent.EXTRA_STREAM, uri)
                             .putExtra(Intent.EXTRA_SUBJECT, "Hydra VPN logs $ts")
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        // ClipData + флаги: грант доходит через chooser до реального получателя
+                        send.clipData = android.content.ClipData.newUri(contentResolver, "logs", uri)
+                        // явный грант каждому потенциальному обработчику (фикс SecurityException uid=1000)
+                        packageManager.queryIntentActivities(send, PackageManager.MATCH_DEFAULT_ONLY).forEach { ri ->
+                            grantUriPermission(ri.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
                         startActivity(Intent.createChooser(send, "Отправить логи…"))
                         result.success(out.absolutePath)
                     } catch (e: Exception) {

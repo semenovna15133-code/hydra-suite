@@ -1,0 +1,7 @@
+Hydra Client 0.3.12 — фикс шаринга логов + видимая телеметрия обновлений
+
+- SecurityException при шаринге лога: добавлен ClipData + явный
+  grantUriPermission всем обработчикам ACTION_SEND (chooser больше не теряет грант).
+- Телеметрия UpdateService переведена с dev.log на print: строки [HydraUpdate]
+  теперь видны в logcat release-сборок (тег flutter).
+- Точки трассировки: download start, installApk, skip-причины.
