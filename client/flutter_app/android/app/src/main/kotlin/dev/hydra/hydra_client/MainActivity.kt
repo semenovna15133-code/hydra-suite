@@ -175,34 +175,6 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "version" -> result.success("hydra-keyfile/1.2.0")
-
-                "exportLogs" -> {
-                    try {
-                        val dir = java.io.File(cacheDir, "logs").apply { mkdirs() }
-                        val ts = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
-                        val out = java.io.File(dir, "hydra-logs-$ts.txt")
-                        val sb = StringBuilder()
-                        sb.appendLine("# Hydra VPN logs $ts")
-                        sb.appendLine("# device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} android=${android.os.Build.VERSION.RELEASE} sdk=${android.os.Build.VERSION.SDK_INT}")
-                        sb.appendLine("# app=$packageName version=${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()}")
-                        sb.appendLine("# --- logcat (own UID, last 3000 lines) ---")
-                        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-t", "3000"))
-                        proc.inputStream.bufferedReader().use { r -> r.lineSequence().forEach { sb.appendLine(it) } }
-                        proc.waitFor()
-                        out.writeText(sb.toString())
-                        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", out)
-                        val send = Intent(Intent.ACTION_SEND)
-                            .setType("text/plain")
-                            .putExtra(Intent.EXTRA_STREAM, uri)
-                            .putExtra(Intent.EXTRA_SUBJECT, "Hydra VPN logs $ts")
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        startActivity(Intent.createChooser(send, "Отправить логи…"))
-                        result.success(out.absolutePath)
-                    } catch (e: Exception) {
-                        result.error("LOGS_FAIL", e.message, null)
-                    }
-                }
-                else -> result.notImplemented()
             }
         }
 
@@ -482,6 +454,34 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                 }
+
+                "exportLogs" -> {
+                    try {
+                        val dir = java.io.File(cacheDir, "logs").apply { mkdirs() }
+                        val ts = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
+                        val out = java.io.File(dir, "hydra-logs-$ts.txt")
+                        val sb = StringBuilder()
+                        sb.appendLine("# Hydra VPN logs $ts")
+                        sb.appendLine("# device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} android=${android.os.Build.VERSION.RELEASE} sdk=${android.os.Build.VERSION.SDK_INT}")
+                        sb.appendLine("# app=$packageName version=${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()}")
+                        sb.appendLine("# --- logcat (own UID, last 3000 lines) ---")
+                        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-t", "3000"))
+                        proc.inputStream.bufferedReader().use { r -> r.lineSequence().forEach { sb.appendLine(it) } }
+                        proc.waitFor()
+                        out.writeText(sb.toString())
+                        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", out)
+                        val send = Intent(Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(Intent.EXTRA_STREAM, uri)
+                            .putExtra(Intent.EXTRA_SUBJECT, "Hydra VPN logs $ts")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        startActivity(Intent.createChooser(send, "Отправить логи…"))
+                        result.success(out.absolutePath)
+                    } catch (e: Exception) {
+                        result.error("LOGS_FAIL", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
                 else -> result.notImplemented()
             }
         }

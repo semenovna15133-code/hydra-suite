@@ -1,0 +1,6 @@
+Hydra Client 0.3.10 — фикс кнопки «Собрать логи»
+
+Исправлено:
+- Хендлер exportLogs перенесён из KEYFILE_CHANNEL в канал dev.hydra/settings
+  (рядом с installApk). Раньше Dart-обёртка SettingsService.exportLogs не
+  находила метод и падала с MissingPluginException при нажатии «Собрать логи».
