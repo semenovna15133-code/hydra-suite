@@ -1,0 +1,8 @@
+Hydra Client 0.3.9 — фикс канала exportLogs
+
+Исправлено:
+- Хендлер exportLogs был зарегистрирован не на том MethodChannel
+  (MissingPluginException на dev.hydra/settings). Перенесён в канал
+  настроек рядом с installApk.
+- Кнопка «Собрать логи» теперь реально собирает logcat + инфо устройства
+  и открывает шаринг.
