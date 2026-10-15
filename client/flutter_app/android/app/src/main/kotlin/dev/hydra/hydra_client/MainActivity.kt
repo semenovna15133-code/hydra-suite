@@ -204,13 +204,32 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "stopTunnel" -> {
-                    val intent = Intent(this, HydraVpnService::class.java)
-                    stopService(intent)
+                    Log.i("Disconnect", "stopTunnel: full teardown")
+                    SmartConnectManager.disconnect()
+                    HealthMonitor.stop()
+                    ReconnectManager.reset()
+                    val stopIntent = Intent(this, HydraVpnService::class.java).apply {
+                        action = "STOP"
+                    }
+                    try {
+                        startService(stopIntent)
+                    } catch (e: Exception) {
+                        Log.w("Disconnect", "startService STOP: ${e.message}")
+                    }
+                    try {
+                        HydraVpnService.instance?.stop()
+                    } catch (e: Exception) {
+                        Log.w("Disconnect", "instance.stop: ${e.message}")
+                    }
+                    stopService(Intent(this, HydraVpnService::class.java))
                     result.success(true)
                 }
 
                 "isTunnelRunning" -> {
-                    result.success(false)
+                    val mp = HydraVpnService.mpState()
+                    val running = HydraVpnService.isRunning ||
+                        (mp != null && mp.first && mp.second)
+                    result.success(running)
                 }
                 "getServerInfo" -> {
                     // Реальный RTT через туннель (HealthMonitor), не probe-таймаут
@@ -233,10 +252,16 @@ class MainActivity : FlutterActivity() {
                     result.success(json.toString())
                 }
                                 "disconnect" -> {
-                    Log.i("Disconnect", "MethodChannel: disconnect called")
+                    Log.i("Disconnect", "MethodChannel: disconnect full teardown")
                     SmartConnectManager.disconnect()
                     HealthMonitor.stop()
                     ReconnectManager.reset()
+                    val stopIntent = Intent(this, HydraVpnService::class.java).apply {
+                        action = "STOP"
+                    }
+                    try { startService(stopIntent) } catch (_: Exception) {}
+                    try { HydraVpnService.instance?.stop() } catch (_: Exception) {}
+                    stopService(Intent(this, HydraVpnService::class.java))
                     result.success(null)
                 }
                 "getStats" -> {

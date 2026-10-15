@@ -122,7 +122,8 @@ class HydraVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         instance = this
         if (intent?.action == "STOP") {
-            stopSelf()
+            Log.i(TAG, "STOP action — full stop()")
+            stop()
             return START_NOT_STICKY
         }
 
@@ -305,16 +306,23 @@ class HydraVpnService : VpnService() {
     }
 
 override fun onDestroy() {
-        isRunning = false
-        isHandshakeComplete = false
-        instance = null
-        Log.i(TAG, "Stopping tunnel")
+        Log.i(TAG, "onDestroy — teardown")
         try {
+            userInitiatedStop = true
             tunnel?.stop()
-            // tunFd?.close() не вызываем: fd уже передан в Go через detachFd()
+            multiProtocolManager?.stopAll()
+            resetMultiProtoStatus()
+            setActiveProtocol("")
+            HealthMonitor.stop()
+            ReconnectManager.reset()
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping", e)
         }
+        isRunning = false
+        isHandshakeComplete = false
+        instance = null
+        multiProtocolManager = null
+        tunnel = null
         super.onDestroy()
     }
 
