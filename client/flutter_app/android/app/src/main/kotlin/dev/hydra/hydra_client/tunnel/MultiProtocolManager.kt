@@ -222,14 +222,14 @@ class MultiProtocolManager(private val context: Context) {
     private fun streamToLogcat(process: Process, tag: String) {
         Thread {
             try {
-                process.inputStream.bufferedReader().forEachLine { parseWdttLine(tag, it); Log.i("[$tag]", it) }
+                process.inputStream.bufferedReader(Charsets.UTF_8).forEachLine { parseWdttLine(tag, it); Log.i("[$tag]", it) }
             } catch (e: Exception) {
                 Log.d(TAG, "$tag stdout closed")
             }
         }.start()
         Thread {
             try {
-                process.errorStream.bufferedReader().forEachLine { parseWdttLine(tag, it); Log.e("[$tag]", it) }
+                process.errorStream.bufferedReader(Charsets.UTF_8).forEachLine { parseWdttLine(tag, it); Log.e("[$tag]", it) }
             } catch (e: Exception) {
                 Log.d(TAG, "$tag stderr closed")
             }

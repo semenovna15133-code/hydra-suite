@@ -52,12 +52,13 @@ object HealthMonitor {
     }
     
     fun stop() {
+        val wasRunning = job != null
         job?.cancel()
         job = null
         failCount = 0
         lastStatus = HealthStatus.HEALTHY
         statusListener?.invoke(HealthStatus.HEALTHY)
-        Log.i(TAG, "Health monitor stopped")
+        if (wasRunning) Log.i(TAG, "Health monitor stopped")
     }
     
     private fun pingThroughTunnel(): Boolean {

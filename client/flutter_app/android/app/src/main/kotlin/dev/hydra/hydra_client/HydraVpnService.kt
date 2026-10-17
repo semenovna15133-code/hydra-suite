@@ -246,6 +246,8 @@ class HydraVpnService : VpnService() {
     private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
         try { java.io.File(filesDir, "hb_stats.json").delete() } catch (_: Exception) {}
         Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
+        activeProviderName = protocol
+        sessionStartMs = android.os.SystemClock.elapsedRealtime()
         multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
         
         val aivpnKey = intent?.getStringExtra(EXTRA_AIVPN_KEY) ?: ""
@@ -331,7 +333,7 @@ class HydraVpnService : VpnService() {
         поэтому живой туннель счётчиками двигает). */
     private fun startAwgTrafficWatcher() {
         awgWatcher?.interrupt()
-        awgWatcher = Thread {
+        val t = Thread {
             var lastSum = -1L
             var stallMs = 0L
             while (!Thread.currentThread().isInterrupted && isRunning && activeProviderName == "AmneziaWG") {
@@ -356,7 +358,9 @@ class HydraVpnService : VpnService() {
                 try { Thread.sleep(2000L) } catch (e: InterruptedException) { break }
             }
             Log.d(TAG, "AWG traffic watcher exited")
-        }.start()
+        }
+        awgWatcher = t
+        t.start()
     }
 
     /** Публичный метод для отключения из UI */

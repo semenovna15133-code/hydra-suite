@@ -1,0 +1,7 @@
+Hydra Client 0.3.21 — косметика телеметрии и teardown
+
+- session_ms/activeProviderName ставятся на входе в startMultiprotocolTunnel:
+  исчезает stale session_ms (70326 мс) в первую секунду после failover.
+- HealthMonitor.stop() логирует остановку только если монитор реально работал
+  (убран двойной "Health monitor stopped" при teardown).
+- Стримы wdtt-client/hydra-bridge читаются как UTF-8 (убраны кракозябры в логах).
