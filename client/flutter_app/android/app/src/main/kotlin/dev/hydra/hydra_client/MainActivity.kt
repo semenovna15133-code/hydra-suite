@@ -265,7 +265,19 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "getStats" -> {
-                    result.success(HydraVpnService.statsJson())
+                    if (HydraVpnService.activeProviderName == "AmneziaWG") {
+                        val ifn = HydraVpnService.tunName
+                        val rx = if (ifn != null) java.io.File("/sys/class/net/$ifn/statistics/rx_bytes").takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: 0L else 0L
+                        val tx = if (ifn != null) java.io.File("/sys/class/net/$ifn/statistics/tx_bytes").takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: 0L else 0L
+                        val st = HydraVpnService.sessionStartMs
+                        val ms = if (st > 0) android.os.SystemClock.elapsedRealtime() - st else 0L
+                        result.success(org.json.JSONObject().apply {
+                            put("rx_bytes", rx); put("tx_bytes", tx); put("session_ms", ms)
+                        }.toString())
+                    } else {
+                        val f = java.io.File(filesDir, "hb_stats.json")
+                        result.success(if (f.exists()) f.readText() else """{"rx_bytes":0,"tx_bytes":0,"session_ms":0}""")
+                    }
                 }
                 "getWdttStats" -> {
                     result.success(HydraVpnService.wdttStats())

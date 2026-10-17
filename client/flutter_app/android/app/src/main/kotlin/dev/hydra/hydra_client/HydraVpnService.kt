@@ -31,6 +31,12 @@ class HydraVpnService : VpnService() {
         
         @Volatile
         var isHandshakeComplete: Boolean = false
+        @Volatile
+        var sessionStartMs: Long = -1L
+        @Volatile
+        var tunName: String? = null
+        @Volatile
+        var activeProviderName: String? = null
             private set
 
         @Volatile
@@ -216,6 +222,23 @@ class HydraVpnService : VpnService() {
         tunnel!!.start(rawFd, cfg)
         Log.i(TAG, "Tunnel started for key $keyId")
         isHandshakeComplete = true
+        sessionStartMs = android.os.SystemClock.elapsedRealtime()
+        activeProviderName = "AmneziaWG"
+        Thread {
+            for (i in 1..10) {
+                try {
+                    val name = java.net.NetworkInterface.getNetworkInterfaces().toList()
+                        .firstOrNull { it.name.startsWith("tun") || it.name.startsWith("wg") }?.name
+                    if (name != null) {
+                        tunName = name
+                        Log.i(TAG, "TUN interface detected: $name (attempt $i)")
+                        return@Thread
+                    }
+                } catch (e: Exception) { }
+                Thread.sleep(100)
+            }
+            Log.w(TAG, "TUN interface not detected after 10 attempts")
+        }.start()
     }
 
     
@@ -284,6 +307,8 @@ class HydraVpnService : VpnService() {
         isRunning = true
         
         multiProtocolManager!!.startBridge(pfd, protocol)
+        sessionStartMs = android.os.SystemClock.elapsedRealtime()
+        activeProviderName = protocol
         isHandshakeComplete = true
         Log.i(TAG, "$protocol started with SOCKS5 bridge")
         setActiveProtocol(protocol)
@@ -299,6 +324,9 @@ class HydraVpnService : VpnService() {
         isStopping = true
         userInitiatedStop = true
         Log.i(TAG, "stop() called — stopping VPN service")
+        sessionStartMs = -1L
+        tunName = null
+        activeProviderName = null
         try {
             Log.d(TAG, "stop: stopping tunnel")
             tunnel?.stop()

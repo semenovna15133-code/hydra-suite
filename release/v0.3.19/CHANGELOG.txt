@@ -1,21 +1,8 @@
-Hydra Client 0.3.19 — фикс фантомного VPN + AWG статистика
+Hydra Client 0.3.19 — AWG: статистика RX/TX и таймер сессии
 
-Проблемы из 0.3.18:
-1. stop() прерывался посередине (исключение в resetMultiProtoStatus) →
-   tunFd не закрывался → VPN оставался "фантомным" (иконка висела, сайты
-   не открывались).
-2. TUN-интерфейс для AWG не определялся (poll был слишком ранним) →
-   sysfs fallback в getStats не работал → статистика RX/TX = 0.
-
-Исправлено:
-- stop(): каждый шаг в отдельном try/catch (tunnel.stop, multiprotocol.stopAll,
-  resetStatus, healthMonitor.stop, tunFd.close) — гарантирует что tunFd.close()
-  вызовется даже при исключениях.
-- AWG: poll для TUN-интерфейса с задержкой (10 попыток по 100мс) — tunName
-  определяется после того, как Go-ядро создаст интерфейс.
-- stopForeground(true) + stopSelf() вызываются всегда в конце stop().
-
-Проверка:
-- Подключи VPN → отключи → иконка в шторке должна исчезнуть сразу.
-- Сайты должны открываться (трафик идёт напрямую).
-- AWG: таймер тикает, байты RX/TX растут (sysfs fallback работает).
+- getStats: для AWG байты читаются из /sys/class/net/<tun>/statistics/,
+  session_ms — от sessionStartMs (раньше AWG отдавал нули, т.к. hb_stats.json
+  пишет только hydra-bridge для WDTT/AIVPN).
+- tunName определяется poll-потоком (10x100мс) после старта Go-туннеля.
+- activeProviderName/sessionStartMs/tunName сбрасываются в stop().
+- WDTT/AIVPN без изменений (hb_stats.json).
