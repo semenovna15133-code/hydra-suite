@@ -221,8 +221,9 @@ class HydraVpnService : VpnService() {
         tunnel = Tunnel.new_(cfg, protector)
         tunnel!!.start(rawFd, cfg)
         Log.i(TAG, "Tunnel started for key $keyId")
-        isHandshakeComplete = true
+        isHandshakeComplete = false
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
+        startAwgTrafficWatcher()
         activeProviderName = "AmneziaWG"
         Thread {
             for (i in 1..10) {
@@ -315,6 +316,49 @@ class HydraVpnService : VpnService() {
         isHandshakeComplete = true
     }
     
+    private var awgWatcher: Thread? = null
+
+    private fun readSys(ifn: String?, what: String): Long {
+        if (ifn == null) return 0L
+        return try {
+            java.io.File("/sys/class/net/$ifn/statistics/$what")
+                .takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: 0L
+        } catch (e: Exception) { 0L }
+    }
+
+    /** AWG: handshake считаем состоявшимся, когда через tun0 пошёл дешифрованный трафик (rx>0).
+        Stall 45с при установленном флаге -> сброс в connecting (HealthMonitor пингует каждые 25с,
+        поэтому живой туннель счётчиками двигает). */
+    private fun startAwgTrafficWatcher() {
+        awgWatcher?.interrupt()
+        awgWatcher = Thread {
+            var lastSum = -1L
+            var stallMs = 0L
+            while (!Thread.currentThread().isInterrupted && isRunning && activeProviderName == "AmneziaWG") {
+                val rx = readSys(tunName, "rx_bytes")
+                val tx = readSys(tunName, "tx_bytes")
+                if (!isHandshakeComplete && rx > 0L) {
+                    isHandshakeComplete = true
+                    Log.i(TAG, "AWG handshake confirmed by traffic: rx=$rx tx=$tx")
+                }
+                if (isHandshakeComplete) {
+                    val sum = rx + tx
+                    if (sum == lastSum) {
+                        stallMs += 2000L
+                        if (stallMs >= 45000L) {
+                            isHandshakeComplete = false
+                            stallMs = 0L
+                            Log.w(TAG, "AWG traffic stalled 45s — status reset to connecting")
+                        }
+                    } else stallMs = 0L
+                    lastSum = sum
+                }
+                try { Thread.sleep(2000L) } catch (e: InterruptedException) { break }
+            }
+            Log.d(TAG, "AWG traffic watcher exited")
+        }.start()
+    }
+
     /** Публичный метод для отключения из UI */
     fun stop() {
         if (isStopping) {
