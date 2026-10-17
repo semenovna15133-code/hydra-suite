@@ -136,7 +136,7 @@ func run() {
 		if err != nil || n < 20 {
 			continue
 		}
-		addRx(n)
+		addTx(n)
 
 		if buf[0]>>4 != 4 {
 			continue
@@ -303,7 +303,7 @@ func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, thei
 			for i := range conn.pending {
 				if now.Sub(conn.pending[i].sentAt) > 700*time.Millisecond {
 					unix.Write(tunFd, conn.pending[i].pkt)
-					addTx(len(conn.pending[i].pkt))
+					addRx(len(conn.pending[i].pkt))
 					conn.pending[i].sentAt = now
 					addRetrans()
 				}
@@ -351,7 +351,7 @@ func sendTCP(conn *tcpConn, flags byte, payload []byte) {
 			sentAt: time.Now(),
 		})
 	}
-	addTx(len(pkt))
+	addRx(len(pkt))
 	unix.Write(tunFd, pkt)
 }
 
@@ -405,7 +405,7 @@ func sendUDP(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, payload
 	pkt[27] = 0
 	copy(pkt[28:], payload)
 
-	addTx(len(pkt))
+	addRx(len(pkt))
 	unix.Write(tunFd, pkt)
 }
 

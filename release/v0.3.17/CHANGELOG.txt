@@ -1,0 +1,13 @@
+Hydra Client 0.3.17 — AWG-статистика, стабильный статус, чистка ресурсов
+
+- AWG: RX/TX теперь читаются из /sys/class/net/<tun>/statistics/, session_ms —
+  от момента старта туннеля (раньше были нули, т.к. hb_stats.json пишется
+  только hydra-bridge для WDTT/AIVPN, а AWG его не использует).
+- AWG: статус handshake больше не ставится преждевременно при tunnel.start() —
+  подключается после реального рукопожатия Go-ядра, без плющения connected↔connecting.
+- SmartConnectManager: убран отладочный Exception("autoConnect-trace") в логах.
+- startMultiprotocolTunnel: убран дубль isHandshakeComplete=true.
+- QR-сканер: MobileScannerController.dispose() теперь вызывается в dispose() —
+  уходит спам CameraX в фоне.
+- Сохраняются sessionStartMs / tunName / activeProviderName в companion object
+  для корректной работы getStats в любой момент сессии.
