@@ -302,29 +302,36 @@ class HydraVpnService : VpnService() {
         try {
             Log.d(TAG, "stop: stopping tunnel")
             tunnel?.stop()
+        } catch (e: Exception) { Log.e(TAG, "Error stopping tunnel", e) }
+        try {
             Log.d(TAG, "stop: stopping multiprotocol")
             multiProtocolManager?.stopAll()
+        } catch (e: Exception) { Log.e(TAG, "Error stopping multiprotocol", e) }
+        try {
             Log.d(TAG, "stop: resetting status")
             resetMultiProtoStatus()
             setActiveProtocol("")
+        } catch (e: Exception) { Log.e(TAG, "Error resetting status", e) }
+        try {
             Log.d(TAG, "stop: stopping health monitor")
             HealthMonitor.stop()
+        } catch (e: Exception) { Log.e(TAG, "Error stopping health monitor", e) }
+        try {
             Log.d(TAG, "stop: resetting reconnect")
             ReconnectManager.reset()
+        } catch (e: Exception) { Log.e(TAG, "Error resetting reconnect", e) }
+        try {
             Log.d(TAG, "stop: closing tunFd")
             tunFd?.close()
             tunFd = null
-            isHandshakeComplete = false
-            isRunning = false
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during stop teardown", e)
-        } finally {
-            Log.i(TAG, "stop: finally — stopForeground + stopSelf")
-            instance = null
-            isStopping = false
-            stopForeground(true)
-            stopSelf()
-        }
+        } catch (e: Exception) { Log.e(TAG, "Error closing tunFd", e) }
+        isHandshakeComplete = false
+        isRunning = false
+        Log.i(TAG, "stop: finally — stopForeground + stopSelf")
+        instance = null
+        isStopping = false
+        stopForeground(true)
+        stopSelf()
     }
 
 override fun onDestroy() {
