@@ -25,6 +25,8 @@ class HydraVpnService : VpnService() {
     companion object {
         @Volatile
         var isRunning: Boolean = false
+        @Volatile
+        var isStopping: Boolean = false
             private set
         
         @Volatile
@@ -290,19 +292,39 @@ class HydraVpnService : VpnService() {
     
     /** Публичный метод для отключения из UI */
     fun stop() {
+        if (isStopping) {
+            Log.w(TAG, "stop() already in progress, skipping")
+            return
+        }
+        isStopping = true
         userInitiatedStop = true
         Log.i(TAG, "stop() called — stopping VPN service")
-        tunnel?.stop()
-        multiProtocolManager?.stopAll()
-        resetMultiProtoStatus()
-        setActiveProtocol("")
-        HealthMonitor.stop()
-        ReconnectManager.reset()
-        isHandshakeComplete = false
-        isRunning = false
-        instance = null
-        stopForeground(true)
-        stopSelf()
+        try {
+            Log.d(TAG, "stop: stopping tunnel")
+            tunnel?.stop()
+            Log.d(TAG, "stop: stopping multiprotocol")
+            multiProtocolManager?.stopAll()
+            Log.d(TAG, "stop: resetting status")
+            resetMultiProtoStatus()
+            setActiveProtocol("")
+            Log.d(TAG, "stop: stopping health monitor")
+            HealthMonitor.stop()
+            Log.d(TAG, "stop: resetting reconnect")
+            ReconnectManager.reset()
+            Log.d(TAG, "stop: closing tunFd")
+            tunFd?.close()
+            tunFd = null
+            isHandshakeComplete = false
+            isRunning = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during stop teardown", e)
+        } finally {
+            Log.i(TAG, "stop: finally — stopForeground + stopSelf")
+            instance = null
+            isStopping = false
+            stopForeground(true)
+            stopSelf()
+        }
     }
 
 override fun onDestroy() {
@@ -315,6 +337,8 @@ override fun onDestroy() {
             setActiveProtocol("")
             HealthMonitor.stop()
             ReconnectManager.reset()
+            tunFd?.close()
+            tunFd = null
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping", e)
         }
