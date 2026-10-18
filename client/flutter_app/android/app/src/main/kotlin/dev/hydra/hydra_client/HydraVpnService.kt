@@ -42,31 +42,59 @@ class HydraVpnService : VpnService() {
         private var lastStatsLogTs = 0L
         @Volatile var sessionBaseRx: Long = 0L
         @Volatile var sessionBaseTx: Long = 0L
+        @Volatile var uapiSocketPath: String? = null
         fun snapshotStatsBase() {
             val rx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
             val tx = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
             sessionBaseRx = if (rx == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else rx
             sessionBaseTx = if (tx == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else tx
+            Log.i(TAG, "StatsBase snapshot: rx=$sessionBaseRx tx=$sessionBaseTx")
         }
         /** Читает rx/tx байты интерфейса из /proc/net/dev (надёжнее sysfs на Samsung). */
         fun readTunStats(ifn: String?): Pair<Long, Long> {
-            // /proc/net/dev и sysfs закрыты SELinux для untrusted_app (EACCES на Samsung).
-            // Единственный легальный источник — TrafficStats per-UID: весь трафик UID
-            // при активном VPN и есть туннельный поток. Дельта от снимка на старте сессии.
-            val rxRaw = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
-            val txRaw = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
-            val rx = if (rxRaw == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else rxRaw
-            val tx = if (txRaw == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else txRaw
-            val drx = maxOf(0L, rx - sessionBaseRx)
-            val dtx = maxOf(0L, tx - sessionBaseTx)
-            if (drx == 0L && dtx == 0L) {
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (now - lastStatsLogTs > 30000) {
-                    lastStatsLogTs = now
-                    Log.w(TAG, "AwgStats: uid delta ZERO, raw uid rx=$rx tx=$tx base=$sessionBaseRx/$sessionBaseTx")
+            // Самолечение: база не снялась (баг 0.3.24/25) — снимаем сейчас,
+            // чтобы не показывать пользователю накопленный с загрузки багаж
+            if (sessionBaseRx == 0L && sessionBaseTx == 0L) {
+                val rxNow = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
+                val txNow = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
+                if (rxNow > 0L || txNow > 0L) {
+                    snapshotStatsBase()
+                    Log.w(TAG, "AwgStats: base was uninitialized — resnapshot rx=$sessionBaseRx tx=$sessionBaseTx")
+                    return Pair(0L, 0L)
                 }
             }
-            return Pair(drx, dtx)
+            val sockPath = uapiSocketPath
+            if (sockPath != null) {
+                try {
+                    val sock = java.io.File(sockPath)
+                    if (sock.exists()) {
+                        val socket = android.net.LocalSocket()
+                        socket.connect(android.net.LocalSocketAddress(sockPath, android.net.LocalSocketAddress.Namespace.FILESYSTEM))
+                        val out = socket.outputStream
+                        val input = socket.inputStream
+                        out.write("get=1\n".toByteArray())
+                        out.flush()
+                        val buf = ByteArray(4096)
+                        val n = input.read(buf)
+                        socket.close()
+                        if (n > 0) {
+                            val resp = String(buf, 0, n)
+                            val rxMatch = Regex("rx_bytes=(\\d+)").find(resp)
+                            val txMatch = Regex("tx_bytes=(\\d+)").find(resp)
+                            if (rxMatch != null && txMatch != null) {
+                                return Pair(rxMatch.groupValues[1].toLong(), txMatch.groupValues[1].toLong())
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (now - lastStatsLogTs > 30000) {
+                        lastStatsLogTs = now
+                        Log.w(TAG, "AwgStats: UAPI failed: $e")
+                    }
+                }
+            }
+            return Pair(0L, 0L)
         }
 
         @Volatile
@@ -256,6 +284,8 @@ class HydraVpnService : VpnService() {
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
         startAwgTrafficWatcher()
         activeProviderName = "AmneziaWG"
+        uapiSocketPath = java.io.File(cacheDir, "wireguard.sock").absolutePath
+        Log.i(TAG, "UAPI socket at start: exists=${java.io.File(cacheDir, "wireguard.sock").exists()}")
         Thread {
             for (i in 1..10) {
                 try {
@@ -405,6 +435,7 @@ class HydraVpnService : VpnService() {
         Log.i(TAG, "stop() called — stopping VPN service")
         sessionStartMs = -1L
         tunName = null
+        uapiSocketPath = null
         activeProviderName = null
         try {
             Log.d(TAG, "stop: stopping tunnel")
