@@ -221,6 +221,7 @@ class HydraVpnService : VpnService() {
         tunnel = Tunnel.new_(cfg, protector)
         tunnel!!.start(rawFd, cfg)
         Log.i(TAG, "Tunnel started for key $keyId")
+        isHandshakeComplete = true
         isHandshakeComplete = false
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
         startAwgTrafficWatcher()

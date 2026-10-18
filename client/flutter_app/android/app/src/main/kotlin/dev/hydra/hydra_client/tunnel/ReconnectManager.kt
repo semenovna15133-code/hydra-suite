@@ -26,6 +26,10 @@ object ReconnectManager {
 
     fun onHealth(status: HealthMonitor.HealthStatus) {
         Log.d(TAG, "onHealth called: $status")
+        // Честный статус: здоровье туннеля = факт рукопожатия/трафика
+        if (HydraVpnService.isRunning) {
+            HydraVpnService.isHandshakeComplete = (status == HealthStatus.HEALTHY)
+        }
         when (status) {
             HealthMonitor.HealthStatus.HEALTHY -> {
                 if (state != State.STABLE) {
