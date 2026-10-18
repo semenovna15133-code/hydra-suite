@@ -28,7 +28,7 @@ object ReconnectManager {
         Log.d(TAG, "onHealth called: $status")
         // Честный статус: здоровье туннеля = факт рукопожатия/трафика
         if (HydraVpnService.isRunning) {
-            HydraVpnService.isHandshakeComplete = (status == HealthStatus.HEALTHY)
+            HydraVpnService.isHandshakeComplete = (status == HealthMonitor.HealthStatus.HEALTHY)
         }
         when (status) {
             HealthMonitor.HealthStatus.HEALTHY -> {

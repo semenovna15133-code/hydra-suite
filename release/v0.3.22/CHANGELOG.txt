@@ -1,13 +1,12 @@
-Hydra Client 0.3.22 — честный и живой статус AWG
+Hydra Client 0.3.22 — честный статус AWG (health-driven handshake flag)
 
-Регрессия 0.3.20/0.3.21: для AWG флаг isHandshakeComplete не ставил никто
+Регрессия 0.3.20/0.3.21: флаг isHandshakeComplete не ставился для AWG
 (преждевременную установку убрали, замену не добавили) — рабочий туннель
-показывал "connecting"/"Таймаут подключения" вечно (лог 18:29: handshake
-response получен, keepalive идёт, health HEALTHY, а флаг false).
+показывал вечное "connecting"/"Таймаут подключения".
 
 Исправлено:
-- Статус следует за здоровьем туннеля: onHealth HEALTHY -> connected,
-  non-HEALTHY -> connecting (при живом сервисе).
-- При старте AWG флаг ставится сразу (мгновенный connected), а первый же
-  health-чек через ~25с поправляет его по факту: мёртвый туннель честно
-  падает в connecting и доживает до failover.
+- ReconnectManager.onHealth: статус следует за здоровьем туннеля
+  (HEALTHY -> isHandshakeComplete=true, иначе false)
+- AWG start: мгновенный флаг (health поправит через первый чек ~25с)
+- Добавлены недостающие импорты в ReconnectManager.kt
+- Исправлено квалифицированное имя enum: HealthMonitor.HealthStatus
