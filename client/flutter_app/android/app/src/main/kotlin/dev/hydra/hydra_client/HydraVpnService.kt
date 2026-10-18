@@ -39,6 +39,42 @@ class HydraVpnService : VpnService() {
         var activeProviderName: String? = null
             private set
 
+        private var lastStatsLogTs = 0L
+        /** Читает rx/tx байты интерфейса из /proc/net/dev (надёжнее sysfs на Samsung). */
+        fun readTunStats(ifn: String?): Pair<Long, Long> {
+            if (ifn == null) return Pair(0L, 0L)
+            var line: String? = null
+            try {
+                for (ln in java.io.File("/proc/net/dev").readLines()) {
+                    val t = ln.trim()
+                    if (t.startsWith("$ifn:")) { line = t; break }
+                }
+                if (line != null) {
+                    val parts = line!!.substringAfter(':').trim().split(Regex("\\s+"))
+                    if (parts.size >= 9) {
+                        val rx = parts[0].toLongOrNull() ?: 0L
+                        val tx = parts[8].toLongOrNull() ?: 0L
+                        if (rx == 0L && tx == 0L) {
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            if (now - lastStatsLogTs > 30000) {
+                                lastStatsLogTs = now
+                                Log.w(TAG, "AwgStats: ifn=$ifn ZERO, raw: $line")
+                            }
+                        }
+                        return Pair(rx, tx)
+                    }
+                }
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastStatsLogTs > 30000) {
+                    lastStatsLogTs = now
+                    Log.w(TAG, "AwgStats: ifn=$ifn NOT FOUND in /proc/net/dev")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "AwgStats: read failed: $e")
+            }
+            return Pair(0L, 0L)
+        }
+
         @Volatile
         var instance: HydraVpnService? = null
 

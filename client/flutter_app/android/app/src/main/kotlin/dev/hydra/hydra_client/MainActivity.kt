@@ -267,8 +267,9 @@ class MainActivity : FlutterActivity() {
                 "getStats" -> {
                     if (HydraVpnService.activeProviderName == "AmneziaWG") {
                         val ifn = HydraVpnService.tunName
-                        val rx = if (ifn != null) java.io.File("/sys/class/net/$ifn/statistics/rx_bytes").takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: 0L else 0L
-                        val tx = if (ifn != null) java.io.File("/sys/class/net/$ifn/statistics/tx_bytes").takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: 0L else 0L
+                        val stats = HydraVpnService.readTunStats(ifn)
+                        val rx = stats.first
+                        val tx = stats.second
                         val st = HydraVpnService.sessionStartMs
                         val ms = if (st > 0) android.os.SystemClock.elapsedRealtime() - st else 0L
                         result.success(org.json.JSONObject().apply {
