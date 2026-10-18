@@ -1,0 +1,15 @@
+Hydra Client 0.3.24 — статистика через TrafficStats per-UID (SELinux-proof)
+
+Корень двух багов (лог 20:10): SELinux на Samsung/Android 12 запрещает
+untrusted_app читать /proc/net/dev и sysfs-статистику интерфейсов
+(EACCES каждые 2 сек). Следствия: RX/TX всегда 0 И ложные срабатывания
+stall-watcher ("AWG traffic stalled 45s") на живом туннеле — качели статуса.
+
+Исправлено:
+- readTunStats() переписан на TrafficStats.getUidRxBytes/TxBytes(myUid()) —
+  публичный API, не блокируется SELinux; дельта от снимка на старте сессии.
+- snapshotStatsBase() вызывается на каждом старте сессии (AWG и мультипротокол).
+- Stall-watcher и UI-статистика видят реальные байты — ложные "stalled 45s"
+  на живом туннеле исчезают.
+- Health-флаг с grace 20 сек: первое health-событие без данных больше не
+  перетирает мгновенный connected при старте AWG.

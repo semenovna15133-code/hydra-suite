@@ -40,39 +40,33 @@ class HydraVpnService : VpnService() {
             private set
 
         private var lastStatsLogTs = 0L
+        @Volatile var sessionBaseRx: Long = 0L
+        @Volatile var sessionBaseTx: Long = 0L
+        fun snapshotStatsBase() {
+            val rx = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
+            val tx = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
+            sessionBaseRx = if (rx == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else rx
+            sessionBaseTx = if (tx == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else tx
+        }
         /** Читает rx/tx байты интерфейса из /proc/net/dev (надёжнее sysfs на Samsung). */
         fun readTunStats(ifn: String?): Pair<Long, Long> {
-            if (ifn == null) return Pair(0L, 0L)
-            var line: String? = null
-            try {
-                for (ln in java.io.File("/proc/net/dev").readLines()) {
-                    val t = ln.trim()
-                    if (t.startsWith("$ifn:")) { line = t; break }
-                }
-                if (line != null) {
-                    val parts = line!!.substringAfter(':').trim().split(Regex("\\s+"))
-                    if (parts.size >= 9) {
-                        val rx = parts[0].toLongOrNull() ?: 0L
-                        val tx = parts[8].toLongOrNull() ?: 0L
-                        if (rx == 0L && tx == 0L) {
-                            val now = android.os.SystemClock.elapsedRealtime()
-                            if (now - lastStatsLogTs > 30000) {
-                                lastStatsLogTs = now
-                                Log.w(TAG, "AwgStats: ifn=$ifn ZERO, raw: $line")
-                            }
-                        }
-                        return Pair(rx, tx)
-                    }
-                }
+            // /proc/net/dev и sysfs закрыты SELinux для untrusted_app (EACCES на Samsung).
+            // Единственный легальный источник — TrafficStats per-UID: весь трафик UID
+            // при активном VPN и есть туннельный поток. Дельта от снимка на старте сессии.
+            val rxRaw = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
+            val txRaw = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
+            val rx = if (rxRaw == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else rxRaw
+            val tx = if (txRaw == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else txRaw
+            val drx = maxOf(0L, rx - sessionBaseRx)
+            val dtx = maxOf(0L, tx - sessionBaseTx)
+            if (drx == 0L && dtx == 0L) {
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (now - lastStatsLogTs > 30000) {
                     lastStatsLogTs = now
-                    Log.w(TAG, "AwgStats: ifn=$ifn NOT FOUND in /proc/net/dev")
+                    Log.w(TAG, "AwgStats: uid delta ZERO, raw uid rx=$rx tx=$tx base=$sessionBaseRx/$sessionBaseTx")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "AwgStats: read failed: $e")
             }
-            return Pair(0L, 0L)
+            return Pair(drx, dtx)
         }
 
         @Volatile
