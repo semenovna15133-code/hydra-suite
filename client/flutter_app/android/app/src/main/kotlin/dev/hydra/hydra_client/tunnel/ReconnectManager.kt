@@ -2,6 +2,7 @@ package dev.hydra.hydra_client.tunnel
 
 import android.util.Log
 import kotlinx.coroutines.*
+import dev.hydra.hydra_client.HydraVpnService
 
 /**
  * Kill Switch + auto-reconnect (MANIFEST 6.4, 7.5).
