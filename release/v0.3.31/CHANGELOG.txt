@@ -1,0 +1,1 @@
+Hydra Client 0.3.31 — delay 3s между стартом AIVPN и hydra-bridge (race condition fix)

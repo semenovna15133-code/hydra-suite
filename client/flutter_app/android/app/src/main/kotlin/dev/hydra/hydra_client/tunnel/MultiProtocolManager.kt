@@ -110,6 +110,9 @@ class MultiProtocolManager(private val context: Context) {
             aivpnProcess = pb.start()
             streamToLogcat(aivpnProcess!!, "aivpn-client")
             Log.i(TAG, "AIVPN started, port=$AIVPN_SOCKS_PORT")
+        // Race fix: даём AIVPN 3 сек поднять SOCKS5 до старта hydra-bridge
+        Thread.sleep(3000)
+        Log.i(TAG, "Delay 3s after AIVPN start completed")
 
             startBridgeBinary(AIVPN_SOCKS_PORT)
             true
