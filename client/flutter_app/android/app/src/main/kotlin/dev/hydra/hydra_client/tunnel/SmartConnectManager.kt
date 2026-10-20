@@ -95,7 +95,14 @@ object SmartConnectManager {
                 }
             }
             p to sc
-        }.sortedByDescending { it.second }
+        }
+        .sortedWith(compareByDescending<Pair<TunnelProvider, Int>> { it.second }
+            .thenBy { when (it.first.name) {
+                "AmneziaWG" -> 0
+                "WDTT" -> 1
+                "AIVPN" -> 2
+                else -> 3
+            } })
 
         // Белые списки + выбран WDTT, но хешей нет — просим пользователя добавить
         needVkHashes = whiteList && hashCount == 0 &&

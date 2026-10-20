@@ -23,11 +23,15 @@ object ReconnectManager {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var attempts = 0
+    private var lastRxBytes: Long = 0L
+    private var lastRxCheckTime: Long = 0L
+    private val rxStallThresholdMs = 60_000L
     private var reconnectJob: Job? = null
 
     private var unstableCount = 0
     
     fun onHealth(status: HealthMonitor.HealthStatus) {
+        checkRxStall()
         Log.d(TAG, "onHealth called: $status")
         // Честный статус: здоровье туннеля = факт рукопожатия/трафика
         if (HydraVpnService.isRunning &&
@@ -80,6 +84,39 @@ object ReconnectManager {
             state = s
             Log.i(TAG, "State -> $s")
             stateListener?.invoke(s)
+        }
+    }
+
+
+    private fun checkRxStall() {
+        if (!HydraVpnService.isRunning) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastRxCheckTime < 10_000L) return // проверяем раз в 10 сек
+        lastRxCheckTime = now
+        
+        val rx = HydraVpnService.readTunStats(HydraVpnService.tunName).first
+        val tx = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+        if (rx == lastRxBytes && tx > 0L) {
+            // rx заморожен, но tx идёт (keepalive/пинги проходят, трафик не идёт)
+            val stallDuration = now - (lastRxCheckTime - rxStallThresholdMs)
+            if (stallDuration >= rxStallThresholdMs && state == State.STABLE) {
+                Log.e(TAG, "rx-stall detected: rx frozen for ${rxStallThresholdMs}ms, tx=$tx — triggering failover")
+                setState(State.RECONNECTING)
+                scope.launch {
+                    val ok = dev.hydra.hydra_client.tunnel.SmartConnectManager.failover(
+                        dev.hydra.hydra_client.tunnel.SmartConnectManager.active
+                    )
+                    if (ok) {
+                        lastRxBytes = 0L
+                        lastRxCheckTime = 0L
+                        setState(State.STABLE)
+                    } else {
+                        nextBackoff()
+                    }
+                }
+            }
+        } else {
+            lastRxBytes = rx
         }
     }
 
