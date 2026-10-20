@@ -25,6 +25,8 @@ object ReconnectManager {
     private var attempts = 0
     private var reconnectJob: Job? = null
 
+    private var unstableCount = 0
+    
     fun onHealth(status: HealthMonitor.HealthStatus) {
         Log.d(TAG, "onHealth called: $status")
         // Честный статус: здоровье туннеля = факт рукопожатия/трафика
@@ -38,13 +40,32 @@ object ReconnectManager {
                 if (state != State.STABLE) {
                     Log.i(TAG, "Tunnel recovered")
                 }
+                unstableCount = 0
                 attempts = 0
                 setState(State.STABLE)
             }
             HealthMonitor.HealthStatus.UNSTABLE -> {
-                if (state == State.STABLE) {
-                    Log.w(TAG, "Tunnel unstable, scheduling reconnect")
-                    setState(State.RECONNECTING) // guard от гонки дублей
+                unstableCount++
+                Log.w(TAG, "Tunnel unstable (count=$unstableCount)")
+                if (unstableCount >= 2) {
+                    // Failover: переключение на другой протокол
+                    Log.w(TAG, "UNSTABLE ×2 — triggering failover")
+                    setState(State.RECONNECTING)
+                    scope.launch {
+                        val ok = dev.hydra.hydra_client.tunnel.SmartConnectManager.failover(
+                            dev.hydra.hydra_client.tunnel.SmartConnectManager.active
+                        )
+                        if (ok) {
+                            unstableCount = 0
+                            attempts = 0
+                            setState(State.STABLE)
+                        } else {
+                            nextBackoff()
+                        }
+                    }
+                } else if (state == State.STABLE) {
+                    // Первый UNSTABLE — пробуем restart того же протокола
+                    setState(State.RECONNECTING)
                     scheduleReconnect(delaySec = 0L)
                 }
             }

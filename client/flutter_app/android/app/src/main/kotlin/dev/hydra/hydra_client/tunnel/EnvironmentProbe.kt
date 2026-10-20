@@ -39,12 +39,29 @@ object EnvironmentProbe {
                 whiteListDetected = isCellular(context) && !googleReachable()
                 if (whiteListDetected) Log.w(TAG, "White-list network detected: cellular + google.com unreachable")
                 val result = Tunnel.probeNetwork(endpoint, 5_000_000_000L)
-                Log.d(TAG, "Probe: UDP=${result.udpOk}, TCP=${result.tcpOk}, VK=${result.vkApiOk}, DPI=${result.dpiDetected}, latency=${result.latencyMs}ms")
+                // TCP RTT замер (чинит latency=0ms)
+                val tcpRtt = measureTcpRtt("google.com", 443)
+                val effectiveLatency = if (tcpRtt > 0) tcpRtt else result.latencyMs
+                Log.d(TAG, "Probe: UDP=${result.udpOk}, TCP=${result.tcpOk}, VK=${result.vkApiOk}, DPI=${result.dpiDetected}, latency=${effectiveLatency}ms (tcpRtt=$tcpRtt)")
+                result.latencyMs = effectiveLatency
                 result
             } catch (e: Exception) {
                 Log.e(TAG, "Probe failed", e)
                 NetworkProbeResult()
             }
+        }
+    }
+
+    private fun measureTcpRtt(host: String, port: Int): Long {
+        return try {
+            val start = android.os.SystemClock.elapsedRealtime()
+            val socket = java.net.Socket()
+            socket.connect(java.net.InetSocketAddress(host, port), 3000)
+            val rtt = android.os.SystemClock.elapsedRealtime() - start
+            socket.close()
+            rtt
+        } catch (e: Exception) {
+            0L
         }
     }
 }

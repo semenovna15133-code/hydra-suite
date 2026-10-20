@@ -51,6 +51,8 @@ class HydraVpnService : VpnService() {
             Log.i(TAG, "StatsBase snapshot: rx=$sessionBaseRx tx=$sessionBaseTx")
         }
         /** Читает rx/tx байты интерфейса из /proc/net/dev (надёжнее sysfs на Samsung). */
+        /** Публичный метод для evidence-timeout (SmartConnectManager). */
+        @JvmStatic
         fun readTunStats(ifn: String?): Pair<Long, Long> {
             // Самолечение: база не снялась — снимаем сейчас, не показываем багаж UID
             if (sessionBaseRx == 0L && sessionBaseTx == 0L) {

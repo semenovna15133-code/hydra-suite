@@ -283,6 +283,9 @@ class MainActivity : FlutterActivity() {
                 "getWdttStats" -> {
                     result.success(HydraVpnService.wdttStats())
                 }
+                "getScMessage" -> {
+                    result.success(dev.hydra.hydra_client.tunnel.SmartConnectManager.lastStatusMessage)
+                }
                 "getTunnelStatus" -> {
                     Log.d("TunnelStatus", "isRunning=${HydraVpnService.isRunning}, isHandshakeComplete=${HydraVpnService.isHandshakeComplete}")
                     val mp = HydraVpnService.mpState()

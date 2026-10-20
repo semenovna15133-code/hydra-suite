@@ -1,0 +1,8 @@
+Hydra Client 0.3.28 — Smart Connect v2: evidence-timeout + failover + penalty
+
+- ProtocolMemory: SharedPreferences для failCount/penaltyUntil/successCount
+- Evidence-timeout: connect + poll handshake/traffic/health каждые 2с с лимитом
+  AWG 15с, AIVPN 10с, WDTT 12с; провал → recordFailure → следующий кандидат
+- Fast failover: UNSTABLE ×2 → failover через autoConnect (не restart того же)
+- Probe: TCP RTT замер (чинит latency=0ms)
+- UI: statusMessageCallback для сообщений о переключении протокола
