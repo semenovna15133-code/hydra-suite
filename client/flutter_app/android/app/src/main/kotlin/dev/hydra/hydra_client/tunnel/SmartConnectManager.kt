@@ -126,13 +126,19 @@ object SmartConnectManager {
         } else {
             scored.filter { it.second > 0 }
         }
+
+        // Tiebreaker: при равных баллах приоритет AWG > WDTT > AIVPN
+        val tiebreakerOrder = mapOf("AmneziaWG" to 0, "WDTT" to 1, "AIVPN" to 2)
+        val sorted = candidates.sortedWith(compareByDescending<Pair<dev.hydra.hydra_client.tunnel.TunnelProvider, Int>> { it.second }
+            .thenBy { tiebreakerOrder[it.first.name] ?: 99 })
+        val candidatesFinal = sorted
         
         if (candidates.isEmpty()) {
             Log.e(TAG, "No viable candidates (all scored 0 or penalized)")
             return null
         }
         
-        for ((provider, score) in candidates) {
+        for ((provider, score) in candidatesFinal) {
             Log.i(TAG, "Trying ${provider.name} (score=$score)...")
             uiMessage("Подключение через ${provider.name}...")
             

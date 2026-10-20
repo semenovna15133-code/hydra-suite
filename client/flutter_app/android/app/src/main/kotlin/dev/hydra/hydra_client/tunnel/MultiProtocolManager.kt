@@ -44,13 +44,27 @@ class MultiProtocolManager(private val context: Context) {
     fun wdttStatsJson(): String =
         """{"workers":$wdttWorkers,"hashes":$wdttHashes,"active":$wdttActive}"""
 
+    private var aivpnHandshakeFailCount = 0
+    
     private fun parseWdttLine(tag: String, line: String) {
-        if (tag != "wdtt-client") return
-        try {
-            Regex("Воркеров: (\\d+)").find(line)?.let { wdttWorkers = it.groupValues[1].toInt() }
-            Regex("Хешей: (\\d+)").find(line)?.let { wdttHashes = it.groupValues[1].toInt() }
-            Regex("Активных: (\\d+)").find(line)?.let { wdttActive = it.groupValues[1].toInt() }
-        } catch (_: Exception) { }
+        if (tag == "wdtt-client") {
+            try {
+                Regex("Воркеров: (\\d+)").find(line)?.let { wdttWorkers = it.groupValues[1].toInt() }
+                Regex("Хешей: (\\d+)").find(line)?.let { wdttHashes = it.groupValues[1].toInt() }
+                Regex("Активных: (\\d+)").find(line)?.let { wdttActive = it.groupValues[1].toInt() }
+            } catch (_: Exception) { }
+        }
+        // Zombie-детект AIVPN: >=3 "handshake never connected" подряд -> немедленный штраф
+        if (tag == "aivpn-client" && line.contains("handshakes never connected")) {
+            val match = Regex("(\\d+) consecutive handshakes never connected").find(line)
+            if (match != null) {
+                val count = match.groupValues[1].toInt()
+                if (count >= 3) {
+                    Log.e(TAG, "AIVPN zombie detected: $count consecutive handshake failures — penalizing AIVPN")
+                    ProtocolMemory.recordFailure(context, "AIVPN")
+                }
+            }
+        }
     }
     fun processesAlive(): Boolean =
         (wdttProcess?.isAlive == true) || (aivpnProcess?.isAlive == true) || (bridgeProcess?.isAlive == true)

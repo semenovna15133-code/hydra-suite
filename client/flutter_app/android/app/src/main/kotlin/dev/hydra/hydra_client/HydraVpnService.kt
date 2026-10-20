@@ -202,6 +202,7 @@ class HydraVpnService : VpnService() {
     private var tunnel: Tunnel_? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ReconnectManager.context = this
         instance = this
         if (intent?.action == "STOP") {
             Log.i(TAG, "STOP action — full stop()")

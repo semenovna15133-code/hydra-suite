@@ -11,6 +11,8 @@ import dev.hydra.hydra_client.HydraVpnService
  * После 3 неудач — состояние BLOCKED (kill switch активен), backoff 5/15/60Lс.
  */
 object ReconnectManager {
+    var context: android.content.Context? = null
+
     private const val TAG = "ReconnectManager"
 
     enum class State { STABLE, RECONNECTING, BLOCKED }
@@ -24,6 +26,7 @@ object ReconnectManager {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var attempts = 0
     private var lastRxBytes: Long = 0L
+    private var firstStallTime: Long = 0L
     private var lastRxCheckTime: Long = 0L
     private val rxStallThresholdMs = 60_000L
     private var reconnectJob: Job? = null
@@ -98,9 +101,16 @@ object ReconnectManager {
         val tx = HydraVpnService.readTunStats(HydraVpnService.tunName).second
         if (rx == lastRxBytes && tx > 0L) {
             // rx заморожен, но tx идёт (keepalive/пинги проходят, трафик не идёт)
-            val stallDuration = now - (lastRxCheckTime - rxStallThresholdMs)
+            if (firstStallTime == 0L) {
+                firstStallTime = now
+                Log.w(TAG, "rx-stall started: rx=$rx frozen, tx=$tx")
+            }
+            val stallDuration = now - firstStallTime
             if (stallDuration >= rxStallThresholdMs && state == State.STABLE) {
-                Log.e(TAG, "rx-stall detected: rx frozen for ${rxStallThresholdMs}ms, tx=$tx — triggering failover")
+                val protocol = HydraVpnService.activeProviderName ?: "unknown"
+                Log.e(TAG, "rx-stall detected: rx frozen for ${stallDuration}ms (threshold=${rxStallThresholdMs}ms), protocol=$protocol — triggering failover")
+                val failCtx = context ?: HydraVpnService.instance
+                if (failCtx != null) ProtocolMemory.recordFailure(failCtx, protocol)
                 setState(State.RECONNECTING)
                 scope.launch {
                     val ok = dev.hydra.hydra_client.tunnel.SmartConnectManager.failover(
@@ -109,6 +119,7 @@ object ReconnectManager {
                     if (ok) {
                         lastRxBytes = 0L
                         lastRxCheckTime = 0L
+                        firstStallTime = 0L
                         setState(State.STABLE)
                     } else {
                         nextBackoff()
@@ -116,6 +127,11 @@ object ReconnectManager {
                 }
             }
         } else {
+            // rx растёт — сбрасываем stall-счётчик
+            if (firstStallTime != 0L) {
+                Log.i(TAG, "rx recovered: rx=$rx, tx=$tx — stall reset")
+            }
+            firstStallTime = 0L
             lastRxBytes = rx
         }
     }

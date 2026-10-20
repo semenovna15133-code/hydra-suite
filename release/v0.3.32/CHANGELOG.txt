@@ -1,8 +1,7 @@
-Hydra Client 0.3.32 — умный failover и честный скоринг
+Hydra Client 0.3.32 — финальный фикс failover логики
 
-- SmartConnectManager: жёсткий тай-брейк при равенстве score:
-  AmneziaWG (0) > WDTT (1) > AIVPN (2). AIVPN всегда последний в "Авто".
-- ReconnectManager: rx-stall failover — если rx не растёт 60 сек при живом tx
-  (пинги проходят, трафик не идёт), вызывает SmartConnectManager.failover()
-  с переключением на другой протокол. Работает даже когда HealthMonitor
-  даёт HEALTHY.
+- checkRxStall: правильная длительность стalla (firstStallTime), порог 90с
+- failover ставит штраф ProtocolMemory.recordFailure (2-30 мин)
+- Тай-брейк при равных баллах: AWG > WDTT > AIVPN
+- Zombie-детект AIVPN: >=3 "handshake never connected" -> немедленный штраф
+- ReconnectManager.context инициализируется сервисом + страховка instance
