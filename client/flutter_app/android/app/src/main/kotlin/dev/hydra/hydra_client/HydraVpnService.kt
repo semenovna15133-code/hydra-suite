@@ -52,8 +52,7 @@ class HydraVpnService : VpnService() {
         }
         /** Читает rx/tx байты интерфейса из /proc/net/dev (надёжнее sysfs на Samsung). */
         fun readTunStats(ifn: String?): Pair<Long, Long> {
-            // Самолечение: база не снялась (баг 0.3.24/25) — снимаем сейчас,
-            // чтобы не показывать пользователю накопленный с загрузки багаж
+            // Самолечение: база не снялась — снимаем сейчас, не показываем багаж UID
             if (sessionBaseRx == 0L && sessionBaseTx == 0L) {
                 val rxNow = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
                 val txNow = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
@@ -63,6 +62,7 @@ class HydraVpnService : VpnService() {
                     return Pair(0L, 0L)
                 }
             }
+            // Источник 1: UAPI-сокет Go-ядра (если существует)
             val sockPath = uapiSocketPath
             if (sockPath != null) {
                 try {
@@ -94,7 +94,21 @@ class HydraVpnService : VpnService() {
                     }
                 }
             }
-            return Pair(0L, 0L)
+            // Источник 2: TrafficStats per-UID, дельта от снимка на старте сессии
+            val rxRaw = android.net.TrafficStats.getUidRxBytes(android.os.Process.myUid())
+            val txRaw = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid())
+            val rx = if (rxRaw == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else rxRaw
+            val tx = if (txRaw == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else txRaw
+            val drx = maxOf(0L, rx - sessionBaseRx)
+            val dtx = maxOf(0L, tx - sessionBaseTx)
+            if (drx == 0L && dtx == 0L) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastStatsLogTs > 30000) {
+                    lastStatsLogTs = now
+                    Log.w(TAG, "AwgStats: delta ZERO, raw rx=$rx tx=$tx base=$sessionBaseRx/$sessionBaseTx")
+                }
+            }
+            return Pair(drx, dtx)
         }
 
         @Volatile
