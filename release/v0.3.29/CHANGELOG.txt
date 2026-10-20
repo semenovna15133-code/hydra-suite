@@ -1,0 +1,7 @@
+Hydra Client 0.3.29 — AIVPN: TMPDIR в cacheDir приложения
+
+- aivpn-client писал bootstrap descriptor и admin token в /tmp, закрытый
+  SELinux для untrusted_app (Permission denied / No such file) — источник
+  варнингов и нестабильных реконнектов AIVPN.
+- TMPDIR передаётся через environment процесса: cacheDir/aivpn-tmp.
+- Поверх Smart Connect v2 из 0.3.28 (evidence-timeout, failover, penalty).

@@ -88,11 +88,18 @@ class MultiProtocolManager(private val context: Context) {
             started = true
             startedAt = System.currentTimeMillis()
             val binary = extractBinary("aivpn-client")
-            aivpnProcess = ProcessBuilder(listOf(
+            // AIVPN пишет временные файлы (bootstrap descriptor, admin token) в TMPDIR.
+            // По умолчанию это /tmp, который закрыт SELinux для untrusted_app на Android.
+            // Передаём cacheDir приложения как TMPDIR, чтобы AIVPN писал в доступное место.
+            val aivpnTmpDir = java.io.File(context.cacheDir, "aivpn-tmp").apply { mkdirs() }
+            val pb = ProcessBuilder(listOf(
                 binary.absolutePath,
                 "--connection-key", connKey,
                 "--proxy-listen", "127.0.0.1:$AIVPN_SOCKS_PORT"
-            )).redirectErrorStream(false).start()
+            )).redirectErrorStream(false)
+            pb.environment()["TMPDIR"] = aivpnTmpDir.absolutePath
+            Log.i(TAG, "AIVPN TMPDIR set to: ${aivpnTmpDir.absolutePath}")
+            aivpnProcess = pb.start()
             streamToLogcat(aivpnProcess!!, "aivpn-client")
             Log.i(TAG, "AIVPN started, port=$AIVPN_SOCKS_PORT")
 
