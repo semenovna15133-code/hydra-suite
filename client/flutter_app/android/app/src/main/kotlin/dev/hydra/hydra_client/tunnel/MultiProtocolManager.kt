@@ -99,6 +99,14 @@ class MultiProtocolManager(private val context: Context) {
             )).redirectErrorStream(false)
             pb.environment()["TMPDIR"] = aivpnTmpDir.absolutePath
             Log.i(TAG, "AIVPN TMPDIR set to: ${aivpnTmpDir.absolutePath}")
+            // Создаём symlink /tmp/aivpn-* → cacheDir через su (AIVPN может игнорировать TMPDIR)
+            try {
+                val suPb = ProcessBuilder("su", "-c", "ln -sf ${aivpnTmpDir.absolutePath} /tmp/aivpn-*")
+                suPb.start().waitFor()
+                Log.i(TAG, "Symlink /tmp/aivpn-* -> ${aivpnTmpDir.absolutePath} created")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create symlink: ${e.message}")
+            }
             aivpnProcess = pb.start()
             streamToLogcat(aivpnProcess!!, "aivpn-client")
             Log.i(TAG, "AIVPN started, port=$AIVPN_SOCKS_PORT")

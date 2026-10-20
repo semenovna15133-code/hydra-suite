@@ -1,0 +1,8 @@
+Hydra Client 0.3.30 — фикс AIVPN через symlink (TMPDIR игнорируется)
+
+AIVPN-бинарник использует hardcoded /tmp/ и игнорирует TMPDIR из environment,
+что приводит к Permission denied и падениям каждые 4-32 секунды.
+
+Исправлено: перед запуском aivpn-client создаётся symlink /tmp/aivpn-* →
+cacheDir/aivpn-tmp через su (root-доступ уже используется при запуске
+бинарников), что перенаправляет запись временных файлов в доступное место.
