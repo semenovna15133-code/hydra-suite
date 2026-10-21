@@ -185,7 +185,7 @@ object SmartConnectManager {
      */
     private suspend fun tryConnectWithEvidence(provider: TunnelProvider, kid: String): Boolean {
         val timeoutMs = when (provider.name) {
-            "AmneziaWG" -> 15_000L
+            "AmneziaWG" -> 30000L
             "AIVPN" -> 10_000L
             "WDTT" -> 12_000L
             else -> 15_000L

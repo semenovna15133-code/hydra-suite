@@ -1,0 +1,7 @@
+Hydra Client 0.3.35 — AWG evidence: прямое подтверждение рукопожатия из GoLog
+
+Ложные "AWG недоступен" устранены: флаг isHandshakeComplete поднимается
+напрямую из GoLog-строки "Received handshake response" (~1-2 сек), а не
+ждёт первый пинг HealthMonitor (который приходил позже evidence-окна).
+Плюс evidence-окно AWG расширено до 30с как бэкстоп.
+Плюс ReconnectManager.context гарантированно инициализируется при старте сервиса.
