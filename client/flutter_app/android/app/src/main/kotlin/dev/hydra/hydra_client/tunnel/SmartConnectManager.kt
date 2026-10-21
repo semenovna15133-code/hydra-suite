@@ -6,6 +6,8 @@ import kotlinx.coroutines.*
 import tunnel.NetworkProbeResult
 
 object SmartConnectManager {
+    private var lastNetworkType: String? = null
+
     private const val TAG = "SmartConnectManager"
     
     private val providers = mutableListOf<TunnelProvider>()
@@ -40,6 +42,20 @@ object SmartConnectManager {
     }
     
     suspend fun autoConnect(ctx: Context, kid: String): TunnelProvider? {
+        // Сброс штрафов при смене сети (WiFi ↔ cellular)
+        val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+        val currentType = when {
+            caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
+            caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "cellular"
+            else -> "unknown"
+        }
+        if (lastNetworkType != null && lastNetworkType != currentType) {
+            Log.i(TAG, "Network changed $lastNetworkType -> $currentType: resetting all penalties")
+            ProtocolMemory.resetAll(ctx)
+        }
+        lastNetworkType = currentType
+
         context = ctx
         keyId = kid
         Log.i(TAG, "Starting Smart Connect...")
@@ -99,8 +115,8 @@ object SmartConnectManager {
         .sortedWith(compareByDescending<Pair<TunnelProvider, Int>> { it.second }
             .thenBy { when (it.first.name) {
                 "AmneziaWG" -> 0
-                "WDTT" -> 1
-                "AIVPN" -> 2
+                "AIVPN" -> 1
+                "WDTT" -> 2
                 else -> 3
             } })
 
@@ -128,7 +144,7 @@ object SmartConnectManager {
         }
 
         // Tiebreaker: при равных баллах приоритет AWG > WDTT > AIVPN
-        val tiebreakerOrder = mapOf("AmneziaWG" to 0, "WDTT" to 1, "AIVPN" to 2)
+        val tiebreakerOrder = mapOf("AmneziaWG" to 0, "AIVPN" to 1, "WDTT" to 2)
         val sorted = candidates.sortedWith(compareByDescending<Pair<dev.hydra.hydra_client.tunnel.TunnelProvider, Int>> { it.second }
             .thenBy { tiebreakerOrder[it.first.name] ?: 99 })
         val candidatesFinal = sorted

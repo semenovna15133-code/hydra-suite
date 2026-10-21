@@ -23,11 +23,12 @@ class AIVPNTunnelProvider(
 
     override fun score(probe: NetworkProbeResult?): Int {
         if (probe == null) return 40
+        // AIVPN — TCP-протокол (443), оценка по TCP-доступности
         return when {
-            probe.udpOk -> (80 - (probe.latencyMs / 10)).toInt().coerceAtLeast(1)
-            probe.dpiDetected -> 90
-            probe.tcpOk && !probe.udpOk -> 0
-            else -> 20
+            probe.dpiDetected -> 90                              // DPI = AIVPN лучший выбор
+            probe.tcpOk -> (80 - (probe.latencyMs / 10).toInt()).coerceAtLeast(1)
+            probe.udpOk && !probe.tcpOk -> 20                    // только UDP — AIVPN не пройдёт
+            else -> 10
         }
     }
 
