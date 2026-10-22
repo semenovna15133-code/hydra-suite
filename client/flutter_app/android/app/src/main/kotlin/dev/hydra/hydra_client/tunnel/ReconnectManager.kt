@@ -95,7 +95,7 @@ object ReconnectManager {
 
     fun onWdttDead(reason: String) {
         if (!HydraVpnService.isRunning) return
-        if (HydraVpnService.activeProviderName != "WDTT") return
+        if (!HydraVpnService.activeProviderName.equals("WDTT", ignoreCase = true)) return
         if (wdttFailoverInProgress) return
         wdttFailoverInProgress = true
         Log.e(TAG, "WDTT dead: $reason — recording failure and failing over")

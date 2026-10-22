@@ -1,0 +1,11 @@
+Hydra Client 0.3.39 — WDTT watchdog теперь видит смерть потоков
+
+Проблема: watchdog вызывал onWdttDead, но проверка
+HydraVpnService.activeProviderName != "WDTT" падала из-за
+case-mismatch: имя протокола устанавливалось в lowercase "wdtt",
+а проверялось "WDTT". Результат: watchdog молчал 5+ минут при
+мёртвом WDTT, пользователь оставался без интернета.
+
+Исправлено: ignoreCase = true в сравнении. Теперь при смерти WDTT
+(0 активных потоков 45+ сек или PAUSED) watchdog корректно вызывает
+ProtocolMemory.recordFailure + failover на AWG/AIVPN за 2-3 сек.
