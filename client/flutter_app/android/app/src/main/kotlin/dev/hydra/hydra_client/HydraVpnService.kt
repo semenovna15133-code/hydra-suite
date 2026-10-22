@@ -50,6 +50,10 @@ class HydraVpnService : VpnService() {
             sessionBaseTx = if (tx == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else tx
             Log.i(TAG, "StatsBase snapshot: rx=$sessionBaseRx tx=$sessionBaseTx")
         }
+
+        /** Живы ли бэкенд-процессы мультипротокольного туннеля (для детекта тихой смерти). */
+        fun processesAlive(): Boolean =
+            instance?.multiProtocolManager?.processesAlive() ?: true
         /** Читает rx/tx байты интерфейса из /proc/net/dev (надёжнее sysfs на Samsung). */
         /** Публичный метод для evidence-timeout (SmartConnectManager). */
         @JvmStatic

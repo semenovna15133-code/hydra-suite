@@ -115,6 +115,22 @@ object ReconnectManager {
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastRxCheckTime < 10_000L) return // проверяем раз в 10 сек
         lastRxCheckTime = now
+        // Тихая смерть бэкенда: isRunning=true, но процессы wdtt/aivpn мертвы
+        val proto = HydraVpnService.activeProviderName
+        if (proto != null && !proto.equals("AmneziaWG", ignoreCase = true) && !HydraVpnService.processesAlive()) {
+            if (!wdttFailoverInProgress) {
+                wdttFailoverInProgress = true
+                Log.e(TAG, "Backend processes dead while isRunning=true (proto=$proto) — failover")
+                scope.launch {
+                    val ok = dev.hydra.hydra_client.tunnel.SmartConnectManager.failover(
+                        dev.hydra.hydra_client.tunnel.SmartConnectManager.active
+                    )
+                    Log.i(TAG, "Process-death failover result: $ok")
+                    wdttFailoverInProgress = false
+                }
+            }
+            return
+        }
         
         DevLog.d("ReconnectManager", "rx-stall state: lastRx=$lastRxBytes, firstStallTime=$firstStallTime, state=$state")
         
