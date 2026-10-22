@@ -296,11 +296,10 @@ class HydraVpnService : VpnService() {
         tunnel = Tunnel.new_(cfg, protector)
         tunnel!!.start(rawFd, cfg)
         Log.i(TAG, "Tunnel started for key $keyId")
-        isHandshakeComplete = true
         isHandshakeComplete = false
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
-        startAwgTrafficWatcher()
         activeProviderName = "AmneziaWG"
+        startAwgTrafficWatcher()
         uapiSocketPath = java.io.File(cacheDir, "wireguard.sock").absolutePath
         Log.i(TAG, "UAPI socket at start: exists=${java.io.File(cacheDir, "wireguard.sock").exists()}")
         Thread {
@@ -415,8 +414,9 @@ class HydraVpnService : VpnService() {
             var lastSum = -1L
             var stallMs = 0L
             while (!Thread.currentThread().isInterrupted && isRunning && activeProviderName == "AmneziaWG") {
-                val rx = readSys(tunName, "rx_bytes")
-                val tx = readSys(tunName, "tx_bytes")
+                val st = readTunStats(tunName)
+                val rx = st.first
+                val tx = st.second
                 if (!isHandshakeComplete && rx > 0L) {
                     isHandshakeComplete = true
                     Log.i(TAG, "AWG handshake confirmed by traffic: rx=$rx tx=$tx")

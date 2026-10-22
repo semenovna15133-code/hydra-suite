@@ -1,0 +1,11 @@
+Hydra Client 0.3.37 — AWG handshake подтверждается трафиком за 2-4 секунды
+
+Первопричина: AWG traffic watcher читал rx/tx из sysfs
+(/sys/class/net/.../statistics), который на Samsung не работает — счётчики
+всегда 0, флаг isHandshakeComplete не поднимался, evidence-окно ждало
+впустую и ставило AWG ложный штраф при живом туннеле.
+
+0.3.37:
+- watcher переведён на readTunStats (UAPI-сокет + /proc/net/dev)
+- единственный запуск watcher после установки activeProviderName
+- убран дубль isHandshakeComplete true/false на старте AWG
