@@ -116,6 +116,8 @@ object ReconnectManager {
         if (now - lastRxCheckTime < 10_000L) return // проверяем раз в 10 сек
         lastRxCheckTime = now
         
+        DevLog.d("ReconnectManager", "rx-stall state: lastRx=$lastRxBytes, firstStallTime=$firstStallTime, state=$state")
+        
         val rx = HydraVpnService.readTunStats(HydraVpnService.tunName).first
         val tx = HydraVpnService.readTunStats(HydraVpnService.tunName).second
         if (rx == lastRxBytes && tx > 0L) {

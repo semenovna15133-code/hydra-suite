@@ -35,10 +35,12 @@ object EnvironmentProbe {
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Probing network for endpoint: $endpoint")
+                DevLog.d("EnvironmentProbe", "Starting probe: endpoint=$endpoint, whiteListCheck=$whiteListDetected")
                 // 5 секунд в наносекундах (gomobile не транслирует Duration)
                 whiteListDetected = isCellular(context) && !googleReachable()
                 if (whiteListDetected) Log.w(TAG, "White-list network detected: cellular + google.com unreachable")
                 val result = Tunnel.probeNetwork(endpoint, 5_000_000_000L)
+                DevLog.d("EnvironmentProbe", "Tunnel.probeNetwork result: UDP=${result.udpOk}, TCP=${result.tcpOk}, VK=${result.vkApiOk}, DPI=${result.dpiDetected}, latency=${result.latencyMs}ms")
                 // TCP RTT замер (чинит latency=0ms)
                 val tcpRtt = measureTcpRtt("google.com", 443)
                 val effectiveLatency = if (tcpRtt > 0) tcpRtt else result.latencyMs

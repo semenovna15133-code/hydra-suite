@@ -1,0 +1,14 @@
+Hydra Client 0.3.40 — dev-телеметрия для полной диагностики (временный релиз)
+
+Добавлен DevLog-объект с флагом ENABLED=true. Вся диагностика теперь
+идёт через единый тег HydraDev, к релизу достаточно поставить ENABLED=false.
+
+Детальный лог:
+- EnvironmentProbe: результат каждой пробы (UDP/TCP/VK/DPI + latency)
+- ProtocolMemory.dumpState(): состояние штрафов (fail/success/penalty по каждому протоколу)
+- SmartConnectManager: разбор скоринга с деталями (base score / penalized / ok)
+- ReconnectManager: состояние rx-stall watchdog каждые 10 сек
+- MultiProtocolManager: состояние WDTT-watchdog на каждой строке СТАТИСТИКА
+  + сырые строки смерти WDTT (FAILED/PAUSED/осталось: N)
+
+Это временный релиз для разработки. К production-релизу DevLog будет выключен.

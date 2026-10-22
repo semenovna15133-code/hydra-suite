@@ -128,6 +128,13 @@ object SmartConnectManager {
             return null
         }
         
+        DevLog.i("SmartConnectManager", "Memory state: ${ProtocolMemory.dumpState(ctx)}")
+        DevLog.i("SmartConnectManager", "Probe results: UDP=${probe.udpOk}, TCP=${probe.tcpOk}, VK=${probe.vkApiOk}, DPI=${probe.dpiDetected}, latency=${probe.latencyMs}ms")
+        val scoredDetails = scored.map { (p, sc) ->
+            val penalty = if (ProtocolMemory.isPenalized(ctx, p.name)) "penalized" else "ok"
+            "${p.name}=$sc ($penalty)"
+        }.joinToString(", ")
+        DevLog.i("SmartConnectManager", "Scored details: [$scoredDetails], preferred=$preferred, whiteList=$whiteList")
         Log.i(TAG, "Providers scored: ${scored.map { "${it.first.name}=${it.second}" }}, preferred=$preferred")
         
         // Evidence-timeout loop: пробуем каждого кандидата последовательно
@@ -226,6 +233,7 @@ object SmartConnectManager {
         val kid = keyId ?: return false
         
         Log.i(TAG, "Failover triggered, current=${currentProvider?.name}")
+        DevLog.e("SmartConnectManager", "Failover: current=${currentProvider?.name}, memory=${ProtocolMemory.dumpState(ctx)}")
         currentProvider?.let { ProtocolMemory.recordFailure(ctx, it.name) }
         currentProvider?.disconnect()
         

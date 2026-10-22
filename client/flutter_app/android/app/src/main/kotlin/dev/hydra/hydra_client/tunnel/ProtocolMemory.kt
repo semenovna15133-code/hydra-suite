@@ -50,6 +50,18 @@ object ProtocolMemory {
         Log.w(TAG, "Failure recorded: $protocol (fail=$failCount, penalty=${penaltyMs/1000}s)")
     }
     
+    fun dumpState(ctx: Context): String {
+        val protocols = listOf("AmneziaWG", "WDTT", "AIVPN")
+        val now = android.os.SystemClock.elapsedRealtime()
+        return protocols.joinToString(", ") { p ->
+            val fail = getFailCount(ctx, p)
+            val success = getSuccessCount(ctx, p)
+            val penalty = getPenaltyUntil(ctx, p)
+            val remaining = if (penalty > now) (penalty - now) / 1000 else 0
+            "$p(fail=$fail,success=$success,penalty=${remaining}s)"
+        }
+    }
+
     fun resetAll(ctx: Context) {
         getPrefs(ctx).edit().clear().apply()
         Log.i(TAG, "All protocol memory reset")

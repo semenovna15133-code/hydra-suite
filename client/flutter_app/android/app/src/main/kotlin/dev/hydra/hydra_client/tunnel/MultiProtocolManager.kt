@@ -67,6 +67,10 @@ class MultiProtocolManager(private val context: Context) {
                         ReconnectManager.onWdttDead("active=0 for >=45s")
                     }
                 } else { wdttZeroSince = 0L; wdttDeadNotified = false }
+                DevLog.d("WDTT-watchdog", "Активных=$wdttActive, zeroSince=$wdttZeroSince, notified=$wdttDeadNotified")
+            }
+            if (line.contains("FAILED") || line.contains("PAUSED") || line.contains("Лимит попыток исчерпан") || line.contains("осталось:")) {
+                DevLog.e("WDTT-DEATH", "Raw line: $line")
             }
             if ((line.contains("PAUSED") || line.contains("Лимит попыток исчерпан")) && !wdttDeadNotified) {
                 wdttDeadNotified = true
