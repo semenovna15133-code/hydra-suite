@@ -323,6 +323,7 @@ class HydraVpnService : VpnService() {
     private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
         try { java.io.File(filesDir, "hb_stats.json").delete() } catch (_: Exception) {}
         Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
+        snapshotStatsBase() // Reset base for new tunnel session
         activeProviderName = protocol
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
         multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
