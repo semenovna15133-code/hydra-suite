@@ -202,6 +202,7 @@ class HydraVpnService : VpnService() {
     private var tunnel: Tunnel_? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        registerNetworkWatcher()
         ReconnectManager.context = this
         instance = this
         if (intent?.action == "STOP") {
@@ -298,6 +299,7 @@ class HydraVpnService : VpnService() {
         Log.i(TAG, "Tunnel started for key $keyId")
         isHandshakeComplete = false
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
+        snapshotStatsBase() // fresh base for AWG session
         activeProviderName = "AmneziaWG"
         startAwgTrafficWatcher()
         uapiSocketPath = java.io.File(cacheDir, "wireguard.sock").absolutePath
@@ -320,6 +322,32 @@ class HydraVpnService : VpnService() {
     }
 
     
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
+    private fun registerNetworkWatcher() {
+        if (networkCallback != null) return
+        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            private var first = true
+            override fun onAvailable(network: android.net.Network) {
+                if (first) { first = false; return } // игнорируем вызов при регистрации
+                Log.i(TAG, "Network available: $network")
+                dev.hydra.hydra_client.tunnel.SmartConnectManager.onNetworkChanged()
+            }
+            override fun onLost(network: android.net.Network) {
+                Log.i(TAG, "Network lost: $network")
+                dev.hydra.hydra_client.tunnel.SmartConnectManager.onNetworkChanged()
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(cb)
+            networkCallback = cb
+            Log.i(TAG, "Network watcher registered")
+        } catch (e: Exception) {
+            Log.w(TAG, "registerDefaultNetworkCallback failed: $e")
+        }
+    }
+
     private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
         try { java.io.File(filesDir, "hb_stats.json").delete() } catch (_: Exception) {}
         Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
@@ -510,6 +538,13 @@ override fun onDestroy() {
         instance = null
         multiProtocolManager = null
         tunnel = null
+        try {
+            networkCallback?.let { cb ->
+                (getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager)
+                    ?.unregisterNetworkCallback(cb)
+            }
+        } catch (_: Exception) { }
+        networkCallback = null
         super.onDestroy()
     }
 

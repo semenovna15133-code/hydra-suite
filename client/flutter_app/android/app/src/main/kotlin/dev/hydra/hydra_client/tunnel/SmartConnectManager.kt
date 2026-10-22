@@ -1,5 +1,7 @@
 package dev.hydra.hydra_client.tunnel
 
+import dev.hydra.hydra_client.HydraVpnService
+
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.*
@@ -228,6 +230,31 @@ object SmartConnectManager {
      * Fast failover: переключение при деградации (UNSTABLE ×2 или stall).
      * Вызывается из ReconnectManager.
      */
+    private val ncScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+    private var networkChangeJob: kotlinx.coroutines.Job? = null
+
+    /** Смена сети (WiFi<->mobile): штрафы сети-предшественницы недействительны,
+     *  активный туннель переподнимаем со свежим probe. */
+    fun onNetworkChanged() {
+        networkChangeJob?.cancel()
+        networkChangeJob = ncScope.launch {
+            kotlinx.coroutines.delay(3000) // дебаунс: даём сети устаканиться
+            val ctx = context ?: return@launch
+            val kid = keyId ?: return@launch
+            ProtocolMemory.clearPenalties(ctx)
+            if (!HydraVpnService.isRunning) {
+                Log.i(TAG, "Network changed (idle): penalties cleared")
+                return@launch
+            }
+            Log.w(TAG, "Network changed while connected: reconnect with fresh probe")
+            activeProvider?.disconnect()
+            activeProvider = null
+            HealthMonitor.stop()
+            kotlinx.coroutines.delay(1500)
+            autoConnect(ctx, kid)
+        }
+    }
+
     suspend fun failover(currentProvider: TunnelProvider?): Boolean {
         val ctx = context ?: return false
         val kid = keyId ?: return false

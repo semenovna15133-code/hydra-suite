@@ -1,0 +1,15 @@
+Hydra Client 0.3.42 — реакция на смену сети + свежая статистика AWG
+
+Проблема: при переключении 4G→WiFi приложение оставалось на WDTT (хотя
+на WiFi UDP жив и AWG лучше), штрафы ProtocolMemory с мёртвой сети
+отравляли выбор, а AWG-сессии после failover видели багаж статистики.
+
+Исправлено:
+1. NetworkWatcher (ConnectivityManager.NetworkCallback) детектирует
+   смену сети → через 3 сек дебаунс → clearPenalties() + disconnect +
+   autoConnect со свежим EnvironmentProbe.probe().
+2. snapshotStatsBase() вызывается при старте AWG-сессии (не только в
+   startMultiprotocolTunnel), поэтому статистика AWG честная.
+
+Результат: переключение 4G→WiFi → через ~4 сек приложение переподнимает
+туннель с оптимальным протоколом для новой сети.

@@ -62,6 +62,15 @@ object ProtocolMemory {
         }
     }
 
+    fun clearPenalties(ctx: Context) {
+        val ed = getPrefs(ctx).edit()
+        for (p in listOf("AmneziaWG", "WDTT", "AIVPN")) {
+            ed.putInt("fail_$p", 0).putLong("penalty_$p", 0L)
+        }
+        ed.apply()
+        Log.i(TAG, "Penalties cleared (network change)")
+    }
+
     fun resetAll(ctx: Context) {
         getPrefs(ctx).edit().clear().apply()
         Log.i(TAG, "All protocol memory reset")
