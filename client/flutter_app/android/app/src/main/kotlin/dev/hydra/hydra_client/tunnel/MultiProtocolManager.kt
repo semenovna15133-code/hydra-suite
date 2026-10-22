@@ -45,6 +45,8 @@ class MultiProtocolManager(private val context: Context) {
         """{"workers":$wdttWorkers,"hashes":$wdttHashes,"active":$wdttActive}"""
 
     private var aivpnHandshakeFailCount = 0
+    private var wdttZeroSince: Long = 0L
+    @Volatile private var wdttDeadNotified: Boolean = false
     
     private fun parseWdttLine(tag: String, line: String) {
         if (tag == "wdtt-client") {
@@ -53,6 +55,24 @@ class MultiProtocolManager(private val context: Context) {
                 Regex("Хешей: (\\d+)").find(line)?.let { wdttHashes = it.groupValues[1].toInt() }
                 Regex("Активных: (\\d+)").find(line)?.let { wdttActive = it.groupValues[1].toInt() }
             } catch (_: Exception) { }
+            // WDTT liveness: смерть потоков = сигнал к failover, а не вечное "connected"
+            if (line.contains("Распределение потоков")) { wdttZeroSince = 0L; wdttDeadNotified = false }
+            if (line.contains("Активных:")) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (wdttActive == 0) {
+                    if (wdttZeroSince == 0L) { wdttZeroSince = now; Log.w(TAG, "WDTT active=0 started") }
+                    if (now - wdttZeroSince >= 45_000L && !wdttDeadNotified) {
+                        wdttDeadNotified = true
+                        Log.e(TAG, "WDTT dead: active=0 for >=45s")
+                        ReconnectManager.onWdttDead("active=0 for >=45s")
+                    }
+                } else { wdttZeroSince = 0L; wdttDeadNotified = false }
+            }
+            if ((line.contains("PAUSED") || line.contains("Лимит попыток исчерпан")) && !wdttDeadNotified) {
+                wdttDeadNotified = true
+                Log.e(TAG, "WDTT dead: client PAUSED (retry limit exhausted)")
+                ReconnectManager.onWdttDead("PAUSED: retry limit exhausted")
+            }
         }
         // Zombie-детект AIVPN: >=3 "handshake never connected" подряд -> немедленный штраф
         if (tag == "aivpn-client" && line.contains("handshakes never connected")) {

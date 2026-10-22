@@ -91,6 +91,25 @@ object ReconnectManager {
     }
 
 
+    @Volatile private var wdttFailoverInProgress = false
+
+    fun onWdttDead(reason: String) {
+        if (!HydraVpnService.isRunning) return
+        if (HydraVpnService.activeProviderName != "WDTT") return
+        if (wdttFailoverInProgress) return
+        wdttFailoverInProgress = true
+        Log.e(TAG, "WDTT dead: $reason — recording failure and failing over")
+        val ctx = context ?: HydraVpnService.instance
+        if (ctx != null) ProtocolMemory.recordFailure(ctx, "WDTT")
+        scope.launch {
+            val ok = dev.hydra.hydra_client.tunnel.SmartConnectManager.failover(
+                dev.hydra.hydra_client.tunnel.SmartConnectManager.active
+            )
+            Log.i(TAG, "WDTT failover result: $ok")
+            wdttFailoverInProgress = false
+        }
+    }
+
     private fun checkRxStall() {
         if (!HydraVpnService.isRunning) return
         val now = android.os.SystemClock.elapsedRealtime()
