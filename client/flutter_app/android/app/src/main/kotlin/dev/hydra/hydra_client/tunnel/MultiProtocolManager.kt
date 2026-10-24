@@ -90,6 +90,23 @@ class MultiProtocolManager(private val context: Context) {
             }
         }
     }
+    /** 0.4.4: детальная диагностика смерти процесса */
+    private fun logProcessDeath(processName: String, process: Process?) {
+        if (process == null) {
+            Log.w("MultiProtocolManager", "$processName: process is null")
+            return
+        }
+        try {
+            val exitValue = process.exitValue()
+            Log.w("MultiProtocolManager", "$processName: exited with code $exitValue")
+        } catch (e: IllegalThreadStateException) {
+            // Процесс ещё жив
+            Log.d("MultiProtocolManager", "$processName: still alive")
+        } catch (e: Exception) {
+            Log.w("MultiProtocolManager", "$processName: cannot get exit value", e)
+        }
+    }
+
     fun processesAlive(): Boolean =
         (wdttProcess?.isAlive == true) || (aivpnProcess?.isAlive == true) || (bridgeProcess?.isAlive == true)
 

@@ -1,0 +1,11 @@
+Hydra Client 0.4.4 — защита от ложного process-death
+
+1. Детальная диагностика смерти процессов: MultiProtocolManager теперь
+   логирует exit code каждого бэкенда (wdtt-client, aivpn-client,
+   hydra-bridge) для точной диагностики падений.
+2. Защита от ложного failover: если processesAlive() возвращает false,
+   но hb_stats.json показывает трафик (rx>0 или tx>0), failover не
+   срабатывает — туннель не убивается из-за race condition.
+3. Убрана зависимость от API 24+ (.pid() метод) для совместимости
+   с Android 7.0+.
+4. Версия 0.4.4+44.

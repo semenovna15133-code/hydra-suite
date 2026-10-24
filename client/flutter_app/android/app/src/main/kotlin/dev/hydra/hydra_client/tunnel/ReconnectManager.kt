@@ -129,6 +129,13 @@ object ReconnectManager {
         // Тихая смерть бэкенда: isRunning=true, но процессы wdtt/aivpn мертвы
         val proto = HydraVpnService.activeProviderName
         if (proto != null && !proto.equals("AmneziaWG", ignoreCase = true) && !HydraVpnService.processesAlive()) {
+            // 0.4.4: hb-stats подтверждает жизнь — не делаем failover
+            val hb = readHbStats()
+            if (hb != null && (hb.first > 0L || hb.second > 0L)) {
+                Log.w(TAG, "Backend processes dead but hb_stats shows traffic (rx=${hb.first}, tx=${hb.second}) — skipping failover")
+                return
+            }
+            
             if (!wdttFailoverInProgress) {
                 wdttFailoverInProgress = true
                 Log.e(TAG, "Backend processes dead while isRunning=true (proto=$proto) — failover")
