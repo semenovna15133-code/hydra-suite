@@ -1,0 +1,13 @@
+Hydra Client 0.4.3 — evidence-правда
+
+1. Честное evidence WDTT: живость = SOCKS-порт 1082 ИЛИ байты в
+   hb_stats.json (rx+tx>0). Рабочий туннель больше не убивается
+   из-за ложного false-negative evidence.
+2. Окно evidence WDTT увеличено 12с → 20с — даёт время воркерам
+   открыть SOCKS-слушатель после VK-auth.
+3. Защита от чужого флага handshake: evidence для AWG/AIVPN
+   требует activeProviderName == provider.name — закрытый девайс
+   больше не объявляется alive.
+4. Stall-детектор только после подтверждённого handshake:
+   checkRxStall() не дёргает реконнект в фазе подключения.
+5. Версия 0.4.3+43.

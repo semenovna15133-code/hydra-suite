@@ -122,6 +122,7 @@ object ReconnectManager {
 
     private fun checkRxStall() {
         if (!HydraVpnService.isRunning) return
+        if (!HydraVpnService.isHandshakeComplete) return // 0.4.3: stall только после подтверждённого коннекта
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastRxCheckTime < 10_000L) return // проверяем раз в 10 сек
         lastRxCheckTime = now

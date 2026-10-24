@@ -229,7 +229,7 @@ object SmartConnectManager {
         val timeoutMs = when (provider.name) {
             "AmneziaWG" -> 30000L
             "AIVPN" -> 10_000L
-            "WDTT" -> 12_000L
+            "WDTT" -> 20_000L
             else -> 15_000L
         }
         
@@ -241,9 +241,10 @@ object SmartConnectManager {
             delay(2000)
             
             // Признак жизни: handshake complete + ненулевой трафик или HEALTHY
+            val activeName = dev.hydra.hydra_client.HydraVpnService.activeProviderName
             val alive = when (provider.name) {
-                "WDTT" -> wdttSocksAlive()
-                else -> dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete
+                "WDTT" -> wdttSocksAlive() || hbHasBytes()
+                else -> dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete && activeName == provider.name
             }
             val handshakeOk = alive
             val hasTraffic = alive
@@ -262,6 +263,16 @@ object SmartConnectManager {
         return false
     }
     
+    private fun hbHasBytes(): Boolean {
+        return try {
+            val inst = dev.hydra.hydra_client.HydraVpnService.instance ?: return false
+            val f = java.io.File(inst.filesDir, "hb_stats.json")
+            if (!f.exists()) return false
+            val j = org.json.JSONObject(f.readText())
+            (j.optLong("rx_bytes") + j.optLong("tx_bytes")) > 0L
+        } catch (_: Exception) { false }
+    }
+
     private fun wdttSocksAlive(): Boolean = try {
         java.net.Socket().connect(java.net.InetSocketAddress("127.0.0.1", 1082), 300)
         true
