@@ -22,7 +22,7 @@ object ProtocolMemory {
     
     fun isPenalized(ctx: Context, protocol: String): Boolean {
         val until = getPenaltyUntil(ctx, protocol)
-        return until > android.os.SystemClock.elapsedRealtime()
+        return until > System.currentTimeMillis()
     }
     
     fun recordSuccess(ctx: Context, protocol: String) {
@@ -41,7 +41,7 @@ object ProtocolMemory {
             failCount <= 5 -> 10 * 60 * 1000L
             else -> 30 * 60 * 1000L
         }
-        val penaltyUntil = android.os.SystemClock.elapsedRealtime() + penaltyMs
+        val penaltyUntil = System.currentTimeMillis() + penaltyMs
         getPrefs(ctx).edit()
             .putInt("fail_$protocol", failCount)
             .putInt("success_$protocol", 0)
@@ -52,7 +52,7 @@ object ProtocolMemory {
     
     fun dumpState(ctx: Context): String {
         val protocols = listOf("AmneziaWG", "WDTT", "AIVPN")
-        val now = android.os.SystemClock.elapsedRealtime()
+        val now = System.currentTimeMillis()
         return protocols.joinToString(", ") { p ->
             val fail = getFailCount(ctx, p)
             val success = getSuccessCount(ctx, p)

@@ -298,6 +298,15 @@ class HydraVpnService : VpnService() {
             }
         }
 
+        // 0.4.6: close-before-create — предотвращаем утечку Go-девайсов при failover
+        tunnel?.let { old ->
+            try {
+                old.stop()
+                Log.i(TAG, "Previous AWG tunnel stopped before creating new one")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to close previous tunnel", e)
+            }
+        }
         tunnel = Tunnel.new_(cfg, protector)
         tunnel!!.start(rawFd, cfg)
         Log.i(TAG, "Tunnel started for key $keyId")
