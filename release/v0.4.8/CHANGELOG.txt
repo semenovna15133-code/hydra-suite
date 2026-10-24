@@ -1,0 +1,9 @@
+Hydra Client 0.4.8 — быстрый failover с мёртвого AWG
+
+1. Окно evidence AWG 30с → 12с: здоровое рукопожатие видно за
+   5-10с; на сетях, где AWG блокируется DPI, клиент теперь уходит
+   на WDTT/AIVPN за 12с вместо 30с на каждом холодном старте.
+2. Остальное ядро без изменений: single-flight, orphan sweep,
+   roam-aware, per-protocol evidence (hb_stats/SOCKS-правда),
+   штрафы по единой базе часов, transport-aware очистка пенальти.
+3. Версия 0.4.8+48.
