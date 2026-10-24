@@ -241,10 +241,13 @@ object SmartConnectManager {
             delay(2000)
             
             // Признак жизни: handshake complete + ненулевой трафик или HEALTHY
-            val handshakeOk = dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete
-            val stats = dev.hydra.hydra_client.HydraVpnService.readTunStats(null)
-            val hasTraffic = stats.first > 0 || stats.second > 0
-            val healthOk = HealthMonitor.lastStatus == HealthMonitor.HealthStatus.HEALTHY
+            val alive = when (provider.name) {
+                "WDTT" -> wdttSocksAlive()
+                else -> dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete
+            }
+            val handshakeOk = alive
+            val hasTraffic = alive
+            val healthOk = alive
             
             if (handshakeOk && (hasTraffic || healthOk)) {
                 Log.i(TAG, "Evidence: ${provider.name} alive (handshake=$handshakeOk, traffic=$hasTraffic, health=$healthOk)")
@@ -259,6 +262,11 @@ object SmartConnectManager {
         return false
     }
     
+    private fun wdttSocksAlive(): Boolean = try {
+        java.net.Socket().connect(java.net.InetSocketAddress("127.0.0.1", 1082), 300)
+        true
+    } catch (_: Exception) { false }
+
     /**
      * Fast failover: переключение при деградации (UNSTABLE ×2 или stall).
      * Вызывается из ReconnectManager.

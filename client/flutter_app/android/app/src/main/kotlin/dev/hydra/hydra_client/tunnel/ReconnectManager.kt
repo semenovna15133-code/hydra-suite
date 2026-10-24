@@ -93,6 +93,16 @@ object ReconnectManager {
 
     @Volatile private var wdttFailoverInProgress = false
 
+    private fun readHbStats(): Pair<Long, Long>? {
+        return try {
+            val inst = HydraVpnService.instance ?: return null
+            val f = java.io.File(inst.filesDir, "hb_stats.json")
+            if (!f.exists()) return null
+            val j = org.json.JSONObject(f.readText())
+            Pair(j.optLong("rx_bytes"), j.optLong("tx_bytes"))
+        } catch (_: Exception) { null }
+    }
+
     fun onWdttDead(reason: String) {
         if (!HydraVpnService.isRunning) return
         if (!HydraVpnService.activeProviderName.equals("WDTT", ignoreCase = true)) return
@@ -134,8 +144,10 @@ object ReconnectManager {
         
         DevLog.d("ReconnectManager", "rx-stall state: lastRx=$lastRxBytes, firstStallTime=$firstStallTime, state=$state")
         
-        val rx = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-        val tx = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+        val hb = readHbStats()
+        val isWdtt = HydraVpnService.activeProviderName.equals("WDTT", ignoreCase = true)
+        val rx = if (isWdtt && hb != null) hb.first else HydraVpnService.readTunStats(HydraVpnService.tunName).first
+        val tx = if (isWdtt && hb != null) hb.second else HydraVpnService.readTunStats(HydraVpnService.tunName).second
         if (rx == lastRxBytes && tx > 0L) {
             // rx заморожен, но tx идёт (keepalive/пинги проходят, трафик не идёт)
             if (firstStallTime == 0L) {

@@ -501,6 +501,15 @@ class HydraVpnService : VpnService() {
         t.start()
     }
 
+    /** 0.4.2: provider-local cleanup — остановить нативные бэкенды, НЕ убивая сервис */
+    fun stopActiveTunnel() {
+        Log.d(TAG, "stopActiveTunnel: provider-local cleanup")
+        try { tunnel?.stop() } catch (e: Exception) { Log.e(TAG, "stopActiveTunnel: tunnel", e) }
+        try { multiProtocolManager?.stopAll() } catch (e: Exception) { Log.e(TAG, "stopActiveTunnel: multiprotocol", e) }
+        try { awgWatcher?.interrupt() } catch (_: Exception) {}
+        isHandshakeComplete = false
+    }
+
     /** Публичный метод для отключения из UI */
     fun stop() {
         if (isStopping) {

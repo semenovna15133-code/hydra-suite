@@ -1,0 +1,16 @@
+Hydra Client 0.4.2 — правда и очистка
+
+1. Provider-local cleanup: провайдеры (AWG/WDTT/AIVPN) в disconnect()
+   теперь вызывают HydraVpnService.stopActiveTunnel() вместо
+   context.stopService() — Go-девайс закрывается без остановки
+   Foreground Service. Конец AWG-зомби, спамящих рукопожатиями
+   в фоне при фейловере на WDTT.
+2. Честное evidence WDTT: живость проверяется TCP-доступностью
+   локального SOCKS5-порта 1082. Если hydra-bridge получает
+   «connection refused» от мертвых воркеров, WDTT больше не
+   объявляется connected.
+3. Stall-детектор по правде протокола: для WDTT rx/tx читаются
+   из hb_stats.json (hydra-bridge), а не из TUN-счётчиков,
+   которые могли подпитываться зомби-AWG. Для AWG/AIVPN —
+   прежний источник (TUN).
+4. Версия 0.4.2+42.

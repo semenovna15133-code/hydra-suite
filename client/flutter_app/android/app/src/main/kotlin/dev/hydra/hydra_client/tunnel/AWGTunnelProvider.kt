@@ -53,7 +53,7 @@ class AWGTunnelProvider(
         Log.i(TAG, "Candidate failure: provider-local cleanup only (service stop removed in 0.4.1)")
         android.util.Log.w("HydraProvider", "candidate failure: provider-local cleanup only, full service stop removed in 0.4.1")
         val intent = Intent(context, HydraVpnService::class.java)
-        context.stopService(intent)
+        HydraVpnService.instance?.stopActiveTunnel()
     }
     
     override fun isRunning(): Boolean {
