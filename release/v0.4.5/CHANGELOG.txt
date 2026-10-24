@@ -1,0 +1,9 @@
+Hydra Client 0.4.5 — защита от ложных failover
+
+1. Failover не теряет currentProvider: если метод вызван с null,
+   подставляется activeProvider — логи корректно показывают какой
+   протокол падает, и penalty начисляется правильному кандидату.
+2. ReconnectManager: при process-death детекте hb_stats подтверждает
+   жизнь — если в hb_stats.json есть rx/tx, failover не делается
+   (фикс ложного «Backend processes dead» при живом WDTT).
+3. Версия 0.4.5+45.

@@ -318,11 +318,12 @@ object SmartConnectManager {
     suspend fun failover(currentProvider: TunnelProvider?): Boolean {
         val ctx = context ?: return false
         val kid = keyId ?: return false
+        val actualCurrent = currentProvider ?: activeProvider // 0.4.5: защита от null
         
-        Log.i(TAG, "Failover triggered, current=${currentProvider?.name}")
-        DevLog.e("SmartConnectManager", "Failover: current=${currentProvider?.name}, memory=${ProtocolMemory.dumpState(ctx)}")
-        currentProvider?.let { ProtocolMemory.recordFailure(ctx, it.name) }
-        currentProvider?.disconnect()
+        Log.i(TAG, "Failover triggered, current=${actualCurrent?.name}")
+        DevLog.e("SmartConnectManager", "Failover: current=${actualCurrent?.name}, memory=${ProtocolMemory.dumpState(ctx)}")
+        actualCurrent?.let { ProtocolMemory.recordFailure(ctx, it.name) }
+        actualCurrent?.disconnect()
         
         uiMessage("Соединение потеряно, переподключение...")
         delay(2000) // даём teardown завершиться
