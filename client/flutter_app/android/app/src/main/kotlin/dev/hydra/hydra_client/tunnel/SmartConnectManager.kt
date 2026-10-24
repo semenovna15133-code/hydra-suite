@@ -5,6 +5,8 @@ import dev.hydra.hydra_client.HydraVpnService
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
 import tunnel.NetworkProbeResult
 
 object SmartConnectManager {
@@ -42,8 +44,34 @@ object SmartConnectManager {
         providers.add(provider)
         Log.i(TAG, "Registered provider: ${provider.name} (${provider.serverId})")
     }
-    
-    suspend fun autoConnect(ctx: Context, kid: String, retryAfterUnlock: Boolean = true): TunnelProvider? {
+    private val connectMutex = kotlinx.coroutines.sync.Mutex()
+    private var supervisedRetryJob: kotlinx.coroutines.Job? = null
+
+    /** Single-flight: один connect-поток за раз; при null — надзорные ретраи с любых путей. */
+    suspend fun autoConnect(ctx: Context, kid: String, retryAfterUnlock: Boolean = true): TunnelProvider?  {
+        val result = connectMutex.withLock { autoConnectInner(ctx, kid, retryAfterUnlock) }
+        if (result == null) scheduleSupervisedRetries(ctx, kid)
+        return result
+    }
+
+    private fun scheduleSupervisedRetries(ctx: Context, kid: String) {
+        supervisedRetryJob?.cancel()
+        supervisedRetryJob = ncScope.launch {
+            var delayMs = 15_000L
+            repeat(4) { i ->
+                kotlinx.coroutines.delay(delayMs)
+                delayMs = (delayMs * 2).coerceAtMost(120_000L)
+                if (!HydraVpnService.isRunning) {
+                    Log.i(TAG, "Supervised retry #$i (autoConnect returned null)")
+                    val p = connectMutex.withLock { autoConnectInner(ctx, kid, true) }
+                    if (p != null) { Log.i(TAG, "Supervised retry OK: ${p?.name}"); return@launch }
+                }
+            }
+            Log.e(TAG, "Supervised retries exhausted — waiting for network event")
+        }
+    }
+
+    private suspend fun autoConnectInner(ctx: Context, kid: String, retryAfterUnlock: Boolean): TunnelProvider?  {
         // Сброс штрафов при смене сети (WiFi ↔ cellular)
         val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
         val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
@@ -162,7 +190,7 @@ object SmartConnectManager {
             if (retryAfterUnlock && ProtocolMemory.getPrefs(ctx).all.isNotEmpty()) {
                 Log.w(TAG, "No viable candidates — emergency unlock penalties and rescore once")
                 ProtocolMemory.clearPenalties(ctx)
-                return autoConnect(ctx, kid, retryAfterUnlock = false)
+                return autoConnectInner(ctx, kid, false)
             }
             Log.e(TAG, "No viable candidates (all scored 0 or penalized)")
             return null
@@ -251,7 +279,15 @@ object SmartConnectManager {
                 Log.i(TAG, "Network changed (idle): penalties cleared")
                 return@launch
             }
-            Log.w(TAG, "Network changed while connected: reconnect with fresh probe")
+            // roam-aware: сначала 6 сек наблюдаем rx — живой туннель не трогаем
+            val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
+            kotlinx.coroutines.delay(6000)
+            val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
+            if (HydraVpnService.isRunning && rx1 > rx0) {
+                Log.i(TAG, "Roam survived: rx $rx0 -> $rx1 — tunnel kept")
+                return@launch
+            }
+            Log.w(TAG, "Network changed and tunnel stalled (rx frozen at $rx0) — reconnect with fresh probe")
             activeProvider?.disconnect()
             activeProvider = null
             HealthMonitor.stop()
@@ -274,22 +310,6 @@ object SmartConnectManager {
         
         // Перезапускаем autoConnect (он сам выберет следующего кандидата)
         val newProvider = autoConnect(ctx, kid)
-        if (newProvider == null) {
-            Log.e(TAG, "Failover: autoConnect returned null — scheduling supervised retries")
-            ncScope.launch {
-                var delayMs = 15_000L
-                repeat(4) { i ->
-                    kotlinx.coroutines.delay(delayMs)
-                    delayMs = (delayMs * 2).coerceAtMost(120_000L)
-                    if (!HydraVpnService.isRunning) {
-                        Log.i(TAG, "Supervised retry #$i after failed failover")
-                        val p = autoConnect(ctx, kid)
-                        if (p != null) { Log.i(TAG, "Supervised retry OK: ${p.name}"); return@launch }
-                    }
-                }
-                Log.e(TAG, "Supervised retries exhausted — waiting for network event")
-            }
-        }
         return newProvider != null
     }
     

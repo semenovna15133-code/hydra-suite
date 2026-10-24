@@ -352,8 +352,35 @@ class HydraVpnService : VpnService() {
         }
     }
 
+    /** Убивает процессы-сироты бэкендов от прошлых инстансов сервиса и ждёт освобождения портов. */
+    fun killOrphanBackends() {
+        val markers = listOf("libwdtt_client", "libaivpn_client", "libhydra_bridge")
+        val myPid = android.os.Process.myPid()
+        runCatching {
+            java.io.File("/proc").listFiles()?.forEach { d ->
+                val pid = d.name.toIntOrNull() ?: return@forEach
+                if (pid == myPid) return@forEach
+                val cmd = runCatching { java.io.File(d, "cmdline").readText() }.getOrElse { "" }
+                if (markers.any { cmd.contains(it) }) {
+                    Log.w(TAG, "Killing orphan backend pid=$pid cmd=$cmd")
+                    android.os.Process.killProcess(pid)
+                }
+            }
+        }
+        val deadline = android.os.SystemClock.elapsedRealtime() + 2000
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            val busy = listOf(9000, 1082).any { port ->
+                runCatching { java.net.Socket().connect(java.net.InetSocketAddress("127.0.0.1", port), 150); true }.getOrElse { false }
+            }
+            if (!busy) break
+            Thread.sleep(200)
+        }
+        Log.i(TAG, "Orphan sweep done, ports 9000/1082 free")
+    }
+
     private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
         try { java.io.File(filesDir, "hb_stats.json").delete() } catch (_: Exception) {}
+        killOrphanBackends()
         Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
         snapshotStatsBase() // Reset base for new tunnel session
         activeProviderName = protocol

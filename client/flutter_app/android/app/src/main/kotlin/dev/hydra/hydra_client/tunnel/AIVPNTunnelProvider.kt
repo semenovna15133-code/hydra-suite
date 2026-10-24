@@ -57,7 +57,7 @@ class AIVPNTunnelProvider(
 
     override fun disconnect() {
         Log.i(TAG, "Disconnecting AIVPN")
-        HydraVpnService.instance?.stop()
+        android.util.Log.w("HydraProvider", "candidate failure: provider-local cleanup only, full service stop removed in 0.4.1")
         val intent = Intent(context, HydraVpnService::class.java)
         context.stopService(intent)
     }

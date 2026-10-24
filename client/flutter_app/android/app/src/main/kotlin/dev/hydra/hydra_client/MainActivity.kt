@@ -217,7 +217,7 @@ class MainActivity : FlutterActivity() {
                         Log.w("Disconnect", "startService STOP: ${e.message}")
                     }
                     try {
-                        HydraVpnService.instance?.stop()
+                        android.util.Log.w("HydraProvider", "candidate failure: provider-local cleanup only, full service stop removed in 0.4.1")
                     } catch (e: Exception) {
                         Log.w("Disconnect", "instance.stop: ${e.message}")
                     }
