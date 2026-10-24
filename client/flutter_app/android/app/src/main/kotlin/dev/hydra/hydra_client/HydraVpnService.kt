@@ -482,14 +482,17 @@ class HydraVpnService : VpnService() {
         val t = Thread {
             var lastSum = -1L
             var stallMs = 0L
+            var lastRx = -1L  // 0.4.7: для двойной дельты
             while (!Thread.currentThread().isInterrupted && isRunning && activeProviderName == "AmneziaWG") {
                 val st = readTunStats(tunName)
                 val rx = st.first
                 val tx = st.second
-                if (!isHandshakeComplete && rx > 0L) {
+                // 0.4.7: порог + двойная дельта (конец ложных "confirmed" на 52 байтах)
+                if (!isHandshakeComplete && rx > 5000L && lastRx >= 0L && rx > lastRx) {
                     isHandshakeComplete = true
-                    Log.i(TAG, "AWG handshake confirmed by traffic: rx=$rx tx=$tx")
+                    Log.i(TAG, "AWG handshake confirmed by traffic: rx=$rx tx=$tx (delta=${rx-lastRx})")
                 }
+                lastRx = rx
                 if (isHandshakeComplete) {
                     val sum = rx + tx
                     if (sum == lastSum) {

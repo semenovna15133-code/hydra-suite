@@ -302,7 +302,8 @@ object SmartConnectManager {
             val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
             kotlinx.coroutines.delay(6000)
             val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-            if (HydraVpnService.isRunning && rx1 > rx0) {
+            // 0.4.7: проверка провайдера (конец "Roam survived" на мёртвом туннеле)
+            if (HydraVpnService.isRunning && activeProvider?.isRunning() == true && rx1 > rx0) {
                 Log.i(TAG, "Roam survived: rx $rx0 -> $rx1 — tunnel kept")
                 return@launch
             }

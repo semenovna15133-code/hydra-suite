@@ -1,0 +1,11 @@
+Hydra Client 0.4.7 — точные детекторы
+
+1. Traffic watcher: порог 5000 байт + двойная дельта (rx > lastRx).
+   Конец ложных "handshake confirmed" на 52 байтах мусора.
+2. Roam survived: проверка activeProvider?.isRunning() == true.
+   Конец "Roam survived" на мёртвом туннеле (isRunning=true,
+   провайдера нет).
+3. ProtocolMemory: защита свежих штрафов — clearPenalties() не
+   стирает штрафы моложе 10 сек (конец стирания через 3 сек
+   после записи на dual-SIM+WiFi устройствах).
+4. Версия 0.4.7+47.

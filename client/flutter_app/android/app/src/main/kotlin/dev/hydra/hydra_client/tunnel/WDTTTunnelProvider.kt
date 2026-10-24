@@ -23,6 +23,7 @@ class WDTTTunnelProvider(
 
     override fun score(probe: NetworkProbeResult?): Int {
         if (probe == null) return 30
+        // 0.4.7: проверка VK (соблюдение П-03: VK недоступен → WDTT вне пула)
         return when {
             probe.udpOk -> (60 - (probe.latencyMs / 10)).toInt().coerceAtLeast(1)
             probe.tcpOk && !probe.udpOk -> 0

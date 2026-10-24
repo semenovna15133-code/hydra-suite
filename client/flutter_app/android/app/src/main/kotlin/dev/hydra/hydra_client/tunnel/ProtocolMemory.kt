@@ -64,11 +64,18 @@ object ProtocolMemory {
 
     fun clearPenalties(ctx: Context) {
         val ed = getPrefs(ctx).edit()
+        val now = android.os.SystemClock.elapsedRealtime()
+        // 0.4.7: защита свежих штрафов (не стирать если моложе 10 сек)
+        var cleared = 0
         for (p in listOf("AmneziaWG", "WDTT", "AIVPN")) {
-            ed.putInt("fail_$p", 0).putLong("penalty_$p", 0L)
+            val penaltyUntil = getPrefs(ctx).getLong("penalty_$p", 0L)
+            if (penaltyUntil > 0 && now >= penaltyUntil + 10_000L) {
+                ed.putInt("fail_$p", 0).putLong("penalty_$p", 0L)
+                cleared++
+            }
         }
         ed.apply()
-        Log.i(TAG, "Penalties cleared (network change)")
+        Log.i(TAG, "Penalties cleared (network change): $cleared old penalties removed")
     }
 
     fun resetAll(ctx: Context) {
