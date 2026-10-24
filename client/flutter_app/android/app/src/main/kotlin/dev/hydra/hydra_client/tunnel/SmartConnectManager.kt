@@ -237,7 +237,9 @@ object SmartConnectManager {
         provider.connect(kid)
         
         // Poll каждые 2 сек: проверяем handshake + traffic
-        while (android.os.SystemClock.elapsedRealtime() - startTime < timeoutMs) {
+        // 0.4.9: прерываем poll при смерти сервиса (конец evidence по мёртвому)
+        while (android.os.SystemClock.elapsedRealtime() - startTime < timeoutMs
+               && dev.hydra.hydra_client.HydraVpnService.isRunning) {
             delay(2000)
             
             // Признак жизни: handshake complete + ненулевой трафик или HEALTHY
@@ -273,6 +275,16 @@ object SmartConnectManager {
         } catch (_: Exception) { false }
     }
 
+    private fun readHbStats(): Pair<Long, Long>? {
+        return try {
+            val inst = dev.hydra.hydra_client.HydraVpnService.instance ?: return null
+            val f = java.io.File(inst.filesDir, "hb_stats.json")
+            if (!f.exists()) return null
+            val j = org.json.JSONObject(f.readText())
+            Pair(j.optLong("rx_bytes"), j.optLong("tx_bytes"))
+        } catch (_: Exception) { null }
+    }
+
     private fun wdttSocksAlive(): Boolean = try {
         java.net.Socket().connect(java.net.InetSocketAddress("127.0.0.1", 1082), 300)
         true
@@ -298,11 +310,21 @@ object SmartConnectManager {
                 Log.i(TAG, "Network changed (idle): penalties cleared")
                 return@launch
             }
-            // roam-aware: сначала 6 сек наблюдаем rx — живой туннель не трогаем
+            // roam-aware: сначала 6 сек наблюдаем rx/tx — живой туннель не трогаем
             val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
+            val tx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
             kotlinx.coroutines.delay(6000)
             val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-            // 0.4.7: проверка провайдера (конец "Roam survived" на мёртвом туннеле)
+            val tx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+            // 0.4.9: idle-aware живость — не только rx, но и tx/hb/watchdog (конец ложных "Roam survived" в простое)
+            val hb = readHbStats()
+            val hbHasBytes = hb != null && (hb.first > 0L || hb.second > 0L)
+            val aliveByDelta = (rx1 > rx0) || (tx1 > tx0) || hbHasBytes
+            if (!aliveByDelta) {
+                Log.w(TAG, "Roam stale: no rx/tx/hb delta (rx=$rx0->$rx1, tx=$tx0->$tx1, hb=$hb) — triggering reconnect")
+                dev.hydra.hydra_client.tunnel.ReconnectManager.triggerReconnect("roam-stale")
+                return@launch
+            }
             if (HydraVpnService.isRunning && activeProvider?.isRunning() == true && rx1 > rx0) {
                 Log.i(TAG, "Roam survived: rx $rx0 -> $rx1 — tunnel kept")
                 return@launch

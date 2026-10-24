@@ -484,7 +484,11 @@ class HydraVpnService : VpnService() {
             var stallMs = 0L
             var lastRx = -1L  // 0.4.7: для двойной дельты
             while (!Thread.currentThread().isInterrupted && isRunning && activeProviderName == "AmneziaWG") {
-                val st = readTunStats(tunName)
+                // 0.4.9: защита от post-teardown исключений (закрытый tun)
+                val st = try { readTunStats(tunName) } catch (e: Exception) {
+                    Log.w(TAG, "awgWatcher: readTunStats failed after teardown — exiting", e)
+                    break
+                }
                 val rx = st.first
                 val tx = st.second
                 // 0.4.7: порог + двойная дельта (конец ложных "confirmed" на 52 байтах)

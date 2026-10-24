@@ -120,6 +120,20 @@ object ReconnectManager {
         }
     }
 
+    /** 0.4.9: external trigger для roam-stale */
+    fun triggerReconnect(reason: String) {
+        Log.w(TAG, "triggerReconnect: $reason")
+        if (wdttFailoverInProgress) return
+        wdttFailoverInProgress = true
+        scope.launch {
+            val ok = dev.hydra.hydra_client.tunnel.SmartConnectManager.failover(
+                dev.hydra.hydra_client.tunnel.SmartConnectManager.active
+            )
+            Log.i(TAG, "triggerReconnect result: $ok")
+            wdttFailoverInProgress = false
+        }
+    }
+
     private fun checkRxStall() {
         if (!HydraVpnService.isRunning) return
         if (!HydraVpnService.isHandshakeComplete) return // 0.4.3: stall только после подтверждённого коннекта

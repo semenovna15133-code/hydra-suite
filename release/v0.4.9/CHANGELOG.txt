@@ -1,0 +1,14 @@
+Hydra Client 0.4.9 — idle-aware живость и защита от ложных срабатываний
+
+1. П-03 enforced: WDTT исключён из скоринга при недоступном VK
+   (probe.vkApiOk != true → score=0), как требует манифест.
+2. Evidence-цикл прерывается по смерти сервиса — больше не опрашивает
+   труп после handleStopService/onDestroy.
+3. Roam-aware idle-живость: кроме rx-дельты проверяются tx-дельта,
+   hb_stats (rx+tx>0). Простой без пользовательского трафика больше
+   не триггерит ложный "Roam survived" на мёртвом туннеле.
+4. ReconnectManager.triggerReconnect() — внешний триггер для
+   roam-stale и других сценариев.
+5. awgWatcher защищён try/catch от post-teardown исключений
+   при чтении закрытого TUN.
+6. Версия 0.4.9+49.

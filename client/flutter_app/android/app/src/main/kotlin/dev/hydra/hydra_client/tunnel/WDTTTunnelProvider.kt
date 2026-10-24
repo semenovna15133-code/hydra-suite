@@ -25,6 +25,7 @@ class WDTTTunnelProvider(
         if (probe == null) return 30
         // 0.4.7: проверка VK (соблюдение П-03: VK недоступен → WDTT вне пула)
         return when {
+            probe.vkApiOk != true -> 0  // 0.4.9: П-03 — WDTT вне пула при недоступном VK
             probe.udpOk -> (60 - (probe.latencyMs / 10)).toInt().coerceAtLeast(1)
             probe.tcpOk && !probe.udpOk -> 0
             else -> 5
