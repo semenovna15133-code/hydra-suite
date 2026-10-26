@@ -184,10 +184,22 @@ class MultiProtocolManager(private val context: Context) {
                 return@withContext false
             }
             if (debounce("startWdtt")) return@withContext true
-            wdttProcess?.destroy()
-            aivpnProcess?.destroy()
-            killOrphans("libwdtt_client.so")
-            killOrphans("libhydra_bridge.so")
+            // 0.5.2: graceful stop предыдущих процессов (не killOrphans, чтобы не убивать параллельные попытки)
+            wdttProcess?.let { 
+                it.destroy()
+                it.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            }
+            aivpnProcess?.let {
+                it.destroy()
+                it.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            }
+            bridgeProcess?.let {
+                it.destroy()
+                it.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            }
+            // killOrphans только для сирот (процессы без parent), не для наших
+            // killOrphans("libwdtt_client.so")  // УБРАНО: убивал параллельные попытки
+            // killOrphans("libhydra_bridge.so") // УБРАНО: убивал параллельные попытки
             started = true
             startedAt = System.currentTimeMillis()
             val binary = extractBinary("wdtt-client")
@@ -216,10 +228,16 @@ class MultiProtocolManager(private val context: Context) {
             wdttProcess = pb.start()
             streamToLogcat(wdttProcess!!, "wdtt-client")
             
+            // 0.5.2: null-safe проверка (защита от NPE когда stopAll() обнуляет wdttProcess параллельно)
+            val proc = wdttProcess
+            if (proc == null) {
+                Log.e(TAG, "wdttProcess is null after pb.start() — spawn failed or stopped concurrently")
+                return@withContext false
+            }
             // Проверяем что процесс не умер сразу (wrong flags → мгновенная смерть с -h)
-            val exited = wdttProcess!!.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+            val exited = proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
             if (exited) {
-                Log.e(TAG, "wdtt-client died immediately, exit=${wdttProcess!!.exitValue()}")
+                Log.e(TAG, "wdtt-client died immediately, exit=${proc.exitValue()}")
                 return@withContext false
             }
             

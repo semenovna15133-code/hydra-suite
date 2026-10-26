@@ -31,6 +31,8 @@ class HydraVpnService : VpnService() {
         
         @Volatile
         var isHandshakeComplete: Boolean = false
+        private var lastMultiprotocolStartMs: Long = 0L
+        private var lastMultiprotocolName: String? = null
         @Volatile
         var sessionStartMs: Long = -1L
         @Volatile
@@ -405,6 +407,16 @@ class HydraVpnService : VpnService() {
     private fun startMultiprotocolTunnel(intent: Intent?, protocol: String) {
         try { java.io.File(filesDir, "hb_stats.json").delete() } catch (_: Exception) {}
         killOrphanBackends()
+        // 0.5.2: debounce ПО ПРОТОКОЛУ — повторный старт того же протокола < 3 сек
+        // пропускаем (retry/recursive unlock), но failover на ДРУГОЙ протокол не блокируем
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (protocol == lastMultiprotocolName && lastMultiprotocolStartMs > 0
+            && (now - lastMultiprotocolStartMs) < 3000L) {
+            Log.w(TAG, "0.5.2: debounce — повторный старт $protocol пропущен (${now - lastMultiprotocolStartMs}ms назад)")
+            return
+        }
+        lastMultiprotocolStartMs = now
+        lastMultiprotocolName = protocol
         Log.i(TAG, "Starting multiprotocol tunnel: $protocol")
         snapshotStatsBase() // Reset base for new tunnel session
         activeProviderName = protocol

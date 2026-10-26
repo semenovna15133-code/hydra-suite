@@ -1,0 +1,10 @@
+Hydra Client 0.5.2 — null-safe startWdtt + debounce по протоколу
+
+1. NPE в startWdtt(): защита от обращения к wdttProcess после
+   параллельного stopAll() из другого кандидата. Конец crash-шлейфа
+   "Failed to start WDTT: null" при переборе кандидатов.
+2. Debounce multiprotocol-стартов по имени протокола: повторный
+   старт того же протокола < 3 сек пропускается (это retry/
+   recursive unlock в SmartConnectManager), но failover на ДРУГОЙ
+   протокол (WDTT→AIVPN, AWG→WDTT) не блокируется.
+3. Версия 0.5.2+52.
