@@ -236,6 +236,10 @@ object SmartConnectManager {
         val startTime = android.os.SystemClock.elapsedRealtime()
         provider.connect(kid)
         
+        // 0.5.4: фиксированная задержка 2 сек перед evidence-циклом
+        // (даём туннелю время стартовать и создать hb_stats.json)
+        delay(2000)
+        
         // Poll каждые 2 сек: проверяем handshake + traffic
         // 0.4.9: прерываем poll при смерти сервиса (конец evidence по мёртвому)
         while (android.os.SystemClock.elapsedRealtime() - startTime < timeoutMs
