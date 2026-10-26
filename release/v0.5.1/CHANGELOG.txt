@@ -1,0 +1,11 @@
+Hydra Client 0.5.1 — починка NPE и защита от неверного restartTunnel
+
+1. NPE при старте мультипротокольного туннеля: гарантируем
+   инициализацию multiProtocolManager перед startBridge.
+   Конец crash-шлейфа "No viable candidates (all penalized)".
+2. restartTunnel теперь только для AWG (Go-туннель). Для AIVPN/WDTT
+   реконнект идёт через SmartConnectManager.failover — не ломает
+   мультипротокольный TUN.
+3. Emergency unlock штрафов уже работал через retryAfterUnlock,
+   патч не трогал его.
+4. Версия 0.5.1+51.

@@ -178,7 +178,14 @@ class HydraVpnService : VpnService() {
 
         /** Пересоздать Go-туннель под живым TUN (Kill Switch reconnect) */
         fun restartTunnel(): Boolean {
+            // 0.5.1: restartTunnel только для AWG. Для AIVPN/WDTT —
+            // через SmartConnectManager.failover, иначе Go-restart
+            // рушит мультипротокольный TUN (см. NPE @ HydraVpnService.kt:466).
             val svc = instance ?: return false
+            if (activeProviderName != null && activeProviderName != "AmneziaWG") {
+                android.util.Log.w("HydraVpnService", "restartTunnel ignored: activeProviderName=$activeProviderName (not AWG)")
+                return false
+            }
             return try {
                 svc.tunnel?.restart()
                 isHandshakeComplete = false
@@ -463,6 +470,10 @@ class HydraVpnService : VpnService() {
         tunFd = pfd
         isRunning = true
         
+        // 0.5.1: гарантируем инициализацию multiProtocolManager перед startBridge
+        if (multiProtocolManager == null) {
+            multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
+        }
         multiProtocolManager!!.startBridge(pfd, protocol)
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
         activeProviderName = protocol
