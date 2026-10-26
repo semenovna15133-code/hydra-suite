@@ -184,7 +184,8 @@ class MultiProtocolManager(private val context: Context) {
                 return@withContext false
             }
             if (debounce("startWdtt")) return@withContext true
-            // 0.5.2: graceful stop предыдущих процессов (не killOrphans, чтобы не убивать параллельные попытки)
+            // 0.5.3: graceful stop клиентов, но bridge перезапускаем через killOrphans
+            // (bridge должен стартовать ПОСЛЕ каждого клиента, иначе SIGPIPE при попытке писать в мёртвый bridge)
             wdttProcess?.let { 
                 it.destroy()
                 it.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
@@ -193,13 +194,12 @@ class MultiProtocolManager(private val context: Context) {
                 it.destroy()
                 it.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
             }
-            bridgeProcess?.let {
-                it.destroy()
-                it.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
-            }
-            // killOrphans только для сирот (процессы без parent), не для наших
-            // killOrphans("libwdtt_client.so")  // УБРАНО: убивал параллельные попытки
-            // killOrphans("libhydra_bridge.so") // УБРАНО: убивал параллельные попытки
+            // bridge НЕ останавливаем здесь — killOrphans ниже перезапустит его
+            // bridgeProcess?.let { ... }  // УБРАНО: bridge перезапускается через killOrphans
+            
+            // killOrphans для bridge — гарантирует что bridge стартует ПОСЛЕ клиента
+            killOrphans("libhydra_bridge.so")  // 0.5.3: ВЕРНУЛИ — bridge должен перезапускаться
+            // killOrphans("libwdtt_client.so")  // Оставляем закомментированным — не убиваем параллельные попытки
             started = true
             startedAt = System.currentTimeMillis()
             val binary = extractBinary("wdtt-client")

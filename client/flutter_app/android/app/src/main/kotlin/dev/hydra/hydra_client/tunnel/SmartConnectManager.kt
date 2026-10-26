@@ -261,7 +261,8 @@ object SmartConnectManager {
             Log.d(TAG, "Waiting for ${provider.name} evidence: ${elapsed}ms / ${timeoutMs}ms")
         }
         
-        Log.w(TAG, "Evidence timeout for ${provider.name}")
+        // 0.5.3: TODO — distinguish timeout vs start failure
+            Log.w(TAG, "Evidence timeout for ${provider.name}")
         return false
     }
     

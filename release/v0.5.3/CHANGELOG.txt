@@ -1,0 +1,11 @@
+Hydra Client 0.5.3 — bridge перезапускается, конец SIGPIPE
+
+1. killOrphans("libhydra_bridge.so") возвращён: bridge должен
+   стартовать ПОСЛЕ каждого клиента (AIVPN/WDTT). Без этого
+   wdtt-client получал SIGPIPE (exit=141) пытаясь писать в
+   уже мёртвый bridge после failover.
+2. Клиенты (wdtt/aivpn) по-прежнему останавливаются graceful
+   через destroy+waitFor — не убиваем параллельные попытки.
+3. TODO-маркер добавлен: различать evidence-timeout и
+   start-failure в сообщениях SmartConnectManager.
+4. Версия 0.5.3+53.
