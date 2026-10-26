@@ -1,0 +1,8 @@
+Hydra Client 0.5.0 — один туннель, один хозяин
+
+1. Auto-режим: onStartCommand больше не стартует туннель напрямую —
+   им управляет SmartConnectManager. Прямой старт только при явном
+   протоколе в intent. Конец параллельным AWG+WDTT и спаму
+   "write tun: input/output error" поверх чужого TUN.
+2. Порт WDTT SOCKS остаётся 1082 (9000 — control-порт, не трогали).
+3. Версия 0.5.0+50.

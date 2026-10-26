@@ -226,14 +226,22 @@ class HydraVpnService : VpnService() {
         val notification = buildNotification()
         startForeground(NOTIFICATION_ID, notification)
 
-        Thread {
-            try {
-                startTunnel(keyId, intent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Tunnel failed", e)
-                stopSelf()
-            }
-        }.start()
+        // 0.5.0: auto-режим управляется SmartConnectManager (UI-канал).
+        // Прямой старт только при явном протоколе — иначе AWG и WDTT
+        // стартуют параллельно и дерутся за один TUN (write tun: I/O error).
+        val explicitProtocol = intent?.getStringExtra(EXTRA_PROTOCOL)
+        if (explicitProtocol != null) {
+            Thread {
+                try {
+                    startTunnel(keyId, intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Tunnel failed", e)
+                    stopSelf()
+                }
+            }.start()
+        } else {
+            Log.i(TAG, "0.5.0: auto mode — tunnel start delegated to SmartConnectManager")
+        }
 
         return START_STICKY
     }
