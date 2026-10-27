@@ -1,0 +1,26 @@
+Hydra Client 0.7.1 — explicit-режим через провайдеров (фикс пустых peer-данных)
+
+Корень проблемы 0.7.0: при тапе на голову MainActivity стартовал сервис
+напрямую только с EXTRA_KEY_ID + EXTRA_PROTOCOL, но startMultiprotocolTunnel
+читает EXTRA_ENDPOINT / EXTRA_WDTT_VK_HASHES / EXTRA_AIVPN_KEY из intent —
+в explicit-флоу их не было:
+  "Starting WDTT: endpoint='', vkHashes=''" → IllegalStateException: нет VK-хешей
+  "Malformed connection key JSON: EOF" → AIVPN с пустым ключом
+
+1. SmartConnectManager.connectExplicit(ctx, kid, protocol):
+   - парсит keyfile, находит peer нужного протокола
+   - строит провайдер (AWG/AIVPN/WDTT) — провайдер САМ подставляет
+     endpoint/hashes/password/key в intent
+   - tryConnectWithEvidence БЕЗ failover-цикла (контракт явного режима)
+   - recordSuccess/recordFailure + HealthMonitor как в auto
+
+2. MainActivity: explicit-тап вызывает connectExplicit в корутине
+   вместо прямого startForegroundService с пустыми extras
+
+3. uiMessage guard: в explicit-режиме авто-тексты SmartConnect
+   ("Подключение через AmneziaWG...") не перетирают статус-сообщение UI
+
+4. Ядро-кнопка: label вне connected = _mode (соответствует сообщению
+   об ошибке того же протокола, конец рассинхрону label/message)
+
+Версия 0.7.1+71.

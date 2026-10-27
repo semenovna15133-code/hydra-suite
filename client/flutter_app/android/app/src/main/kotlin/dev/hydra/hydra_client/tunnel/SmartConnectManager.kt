@@ -371,6 +371,45 @@ object SmartConnectManager {
         }
     }
 
+    // 0.7.1: explicit-подключение: один провайдер, peer-данные из keyfile, БЕЗ failover
+    suspend fun connectExplicit(ctx: Context, kid: String, protocol: String): Boolean =
+        connectMutex.withLock {
+            context = ctx
+            keyId = kid
+            Log.i(TAG, "=== Explicit connect: $protocol (no SmartConnect scoring, no failover) ===")
+            val keysDir = java.io.File(ctx.filesDir, "keys")
+            val keyFile = java.io.File(keysDir, "${sanitizeKeyId(kid)}.key")
+            if (!keyFile.exists()) {
+                Log.e(TAG, "explicit: key file not found: ${keyFile.absolutePath}")
+                return@withLock false
+            }
+            val kf = keyfilekt.Keyfile.parse(keyFile.absolutePath)
+            val peer = kf.peers.firstOrNull { it.protocol == protocol }
+            if (peer == null) {
+                Log.e(TAG, "explicit: no peer for protocol $protocol in key")
+                return@withLock false
+            }
+            val provider = when (peer.protocol) {
+                "awg" -> AWGTunnelProvider(ctx, peer.serverId, peer.label, peer)
+                "aivpn" -> AIVPNTunnelProvider(ctx, peer.serverId, peer.label, peer)
+                "wdtt" -> WDTTTunnelProvider(ctx, peer.serverId, peer.label, peer)
+                else -> return@withLock false
+            }
+            val ok = tryConnectWithEvidence(provider, kid)
+            if (ok) {
+                Log.i(TAG, "✅ explicit ${provider.name} connected")
+                ProtocolMemory.recordSuccess(ctx, provider.name)
+                activeProvider = provider
+                HealthMonitor.statusListener = { st -> ReconnectManager.onHealth(st) }
+                HealthMonitor.start()
+            } else {
+                Log.w(TAG, "❌ explicit ${provider.name} failed — no failover by contract")
+                ProtocolMemory.recordFailure(ctx, provider.name)
+                provider.disconnect()
+            }
+            ok
+        }
+
     suspend fun failover(currentProvider: TunnelProvider?): Boolean {
 
         // 0.6.3: explicit-режим — НЕ переключаемся на другой протокол за спиной пользователя
@@ -396,6 +435,8 @@ object SmartConnectManager {
     }
     
     private fun uiMessage(m: String) {
+        // 0.7.1: в explicit-режиме не перетираем статус-сообщение UI авто-текстами
+        if (dev.hydra.hydra_client.MainActivity.explicitProtocol != null) return
         lastStatusMessage = m
         statusMessageCallback?.invoke(m)
     }

@@ -202,12 +202,12 @@ class MainActivity : FlutterActivity() {
                             // 0.6.1: явное подключение через конкретный протокол (БЕЗ SmartConnect)
                             Log.i("HydraUI", "Explicit connect to $explicitProtocol (no VPN permission needed)")
                             MainActivity.explicitProtocol = explicitProtocol
-                            val intent = Intent(this, HydraVpnService::class.java).apply {
-                                putExtra(HydraVpnService.EXTRA_KEY_ID, keyId)
-                                putExtra(HydraVpnService.EXTRA_PROTOCOL, explicitProtocol)
+                            // 0.7.1: провайдер сам достает endpoint/hashes/key из keyfile
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val ok = SmartConnectManager.connectExplicit(this@MainActivity, keyId, explicitProtocol)
+                                if (!ok) Log.e("HydraUI", "Explicit connect failed: $explicitProtocol")
+                                result.success(ok)
                             }
-                            startForegroundService(intent)
-                            result.success(true)
                         } else {
                             // AUTO-режим: SmartConnect выбирает лучший протокол
                             CoroutineScope(Dispatchers.Main).launch {
