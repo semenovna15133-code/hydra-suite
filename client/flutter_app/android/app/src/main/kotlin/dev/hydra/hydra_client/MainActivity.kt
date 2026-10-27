@@ -34,6 +34,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private val KEYFILE_CHANNEL = "dev.hydra/keyfile"
+    companion object {
+        // 0.6.3: explicit-режим для блокировки failover
+        @Volatile
+        var explicitProtocol: String? = null
+    }
+
     private val TUNNEL_CHANNEL = "dev.hydra/tunnel"
     private val PICK_FILE_REQUEST = 1001
     private val VPN_REQUEST_CODE = 2001
@@ -195,6 +201,7 @@ class MainActivity : FlutterActivity() {
                         if (explicitProtocol != null) {
                             // 0.6.1: явное подключение через конкретный протокол (БЕЗ SmartConnect)
                             Log.i("HydraUI", "Explicit connect to $explicitProtocol (no VPN permission needed)")
+                            MainActivity.explicitProtocol = explicitProtocol
                             val intent = Intent(this, HydraVpnService::class.java).apply {
                                 putExtra(HydraVpnService.EXTRA_KEY_ID, keyId)
                                 putExtra(HydraVpnService.EXTRA_PROTOCOL, explicitProtocol)
@@ -213,6 +220,7 @@ class MainActivity : FlutterActivity() {
                     } else {
                         // VPN permission required — сохраняем protocol для onActivityResult
                         if (explicitProtocol != null) {
+                            MainActivity.explicitProtocol = explicitProtocol
                             vpnIntent.putExtra(HydraVpnService.EXTRA_PROTOCOL, explicitProtocol)
                         }
                         tunnelPendingResult = result
@@ -222,6 +230,7 @@ class MainActivity : FlutterActivity() {
 
                 "stopTunnel" -> {
                     Log.i("Disconnect", "stopTunnel: full teardown")
+                    MainActivity.explicitProtocol = null
                     SmartConnectManager.disconnect()
                     HealthMonitor.stop()
                     ReconnectManager.reset()

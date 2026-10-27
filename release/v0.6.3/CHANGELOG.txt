@@ -1,0 +1,17 @@
+Hydra Client 0.6.3 — режим + explicit отказ + блокировка failover
+
+1. _mode в статус-строке: "Режим: AUTO/AWG/WDTT/AIVPN" больше не врёт
+   (показывает способ инициации, не preferred)
+
+2. Explicit AWG: фейковый connected ловится проверкой rx>0 за 10с
+   → "AWG недоступен: нет входящего трафика" (gomobile broken)
+
+3. Глобальная блокировка failover в explicit-режиме:
+   SmartConnectManager.failover() проверяет MainActivity.explicitProtocol
+   → покрывает ВСЕ триггеры (UNSTABLE×2, WDTT dead, rx-stall, process-death)
+
+4. ReconnectManager.onWdttDead в explicit: stop вместо тихого переключения
+
+5. MainActivity.explicitProtocol ставится/сбрасывается на connect/disconnect
+
+Версия 0.6.3+63.

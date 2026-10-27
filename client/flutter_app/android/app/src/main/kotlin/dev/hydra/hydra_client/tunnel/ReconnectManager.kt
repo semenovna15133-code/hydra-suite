@@ -107,6 +107,12 @@ object ReconnectManager {
         if (!HydraVpnService.isRunning) return
         if (!HydraVpnService.activeProviderName.equals("WDTT", ignoreCase = true)) return
         if (wdttFailoverInProgress) return
+        // 0.6.3: explicit-режим — стоп сервиса вместо тихого failover
+        if (dev.hydra.hydra_client.MainActivity.explicitProtocol != null) {
+            Log.e(TAG, "WDTT dead in explicit mode: $reason — stop, no failover")
+            HydraVpnService.instance?.stop()
+            return
+        }
         wdttFailoverInProgress = true
         Log.e(TAG, "WDTT dead: $reason — recording failure and failing over")
         val ctx = context ?: HydraVpnService.instance

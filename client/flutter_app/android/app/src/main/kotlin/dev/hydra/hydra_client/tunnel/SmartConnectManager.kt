@@ -372,6 +372,12 @@ object SmartConnectManager {
     }
 
     suspend fun failover(currentProvider: TunnelProvider?): Boolean {
+
+        // 0.6.3: explicit-режим — НЕ переключаемся на другой протокол за спиной пользователя
+        if (dev.hydra.hydra_client.MainActivity.explicitProtocol != null) {
+            Log.w(TAG, "failover blocked: explicit mode (${dev.hydra.hydra_client.MainActivity.explicitProtocol})")
+            return false
+        }
         val ctx = context ?: return false
         val kid = keyId ?: return false
         val actualCurrent = currentProvider ?: activeProvider // 0.4.5: защита от null
