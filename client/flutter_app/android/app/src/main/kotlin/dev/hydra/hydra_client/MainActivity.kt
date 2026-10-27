@@ -184,6 +184,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "startTunnel" -> {
                     val keyId = call.argument<String>("keyId")
+                    val explicitProtocol = call.argument<String>("protocol")
                     if (keyId == null) {
                         result.error("INVALID_ARGUMENT", "keyId required", null)
                         return@setMethodCallHandler
@@ -191,13 +192,29 @@ class MainActivity : FlutterActivity() {
 
                     val vpnIntent = VpnService.prepare(this)
                     if (vpnIntent == null) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            val provider = AWGTunnelProvider(this@MainActivity, "fi-polygon", "France · Hetzner")
-                            SmartConnectManager.registerProvider(provider)
-                            val connected = SmartConnectManager.autoConnect(this@MainActivity, keyId)
-                            result.success(connected != null)
+                        if (explicitProtocol != null) {
+                            // 0.6.1: явное подключение через конкретный протокол (БЕЗ SmartConnect)
+                            Log.i("HydraUI", "Explicit connect to $explicitProtocol (no VPN permission needed)")
+                            val intent = Intent(this, HydraVpnService::class.java).apply {
+                                putExtra(HydraVpnService.EXTRA_KEY_ID, keyId)
+                                putExtra(HydraVpnService.EXTRA_PROTOCOL, explicitProtocol)
+                            }
+                            startForegroundService(intent)
+                            result.success(true)
+                        } else {
+                            // AUTO-режим: SmartConnect выбирает лучший протокол
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val provider = AWGTunnelProvider(this@MainActivity, "fi-polygon", "France · Hetzner")
+                                SmartConnectManager.registerProvider(provider)
+                                val connected = SmartConnectManager.autoConnect(this@MainActivity, keyId)
+                                result.success(connected != null)
+                            }
                         }
                     } else {
+                        // VPN permission required — сохраняем protocol для onActivityResult
+                        if (explicitProtocol != null) {
+                            vpnIntent.putExtra(HydraVpnService.EXTRA_PROTOCOL, explicitProtocol)
+                        }
                         tunnelPendingResult = result
                         startActivityForResult(vpnIntent, VPN_REQUEST_CODE)
                     }

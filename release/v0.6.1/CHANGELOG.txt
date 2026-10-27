@@ -1,0 +1,24 @@
+Hydra Client 0.6.1 — явное подключение через протоколы
+
+1. AUTO-голова убрана (была ошибочно добавлена в 0.6.0):
+   - только 3 головы: AWG · WDTT · AIVPN
+   - AUTO-режим = большая центральная кнопка
+
+2. Явное подключение через конкретный протокол:
+   - тап на AWG/WDTT/AIVPN = прямой коннект БЕЗ SmartConnect
+   - при провале: ошибка "протокол недоступен", БЕЗ failover
+   - в логах: "Explicit connect to <protocol>"
+
+3. AUTO-режим (большая центральная кнопка):
+   - SmartConnect выбирает лучший протокол
+   - Probe → score → connect → failover
+
+4. VpnTunnel.start() принимает explicitProtocol:
+   - MethodChannel передаёт protocol в intent
+   - HydraVpnService различает auto/explicit режимы
+
+5. Детальное логирование AWG/AIVPN:
+   - AWGTunnelProvider.connect() логирует каждый этап
+   - AIVPNTunnelProvider.connect() логирует каждый этап
+
+Версия 0.6.1+61.
