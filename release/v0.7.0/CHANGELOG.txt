@@ -1,0 +1,25 @@
+Hydra Client 0.7.0 — консолидированный патч (VK-хеши UI + AWG фикс + AIVPN стабилизация)
+
+1. VK-хеши в настройках:
+   - Секция "VK-хеши (для WDTT)" в шторке настроек
+   - Тап → переход на экран онбординга с 4 полями ввода
+   - Кнопки "Вставить из буфера" / "Проверить все"
+   - Парсер ссылок vk.ru/call/join/...
+
+2. AWG фикс:
+   - AWGTunnelProvider.connect() передаёт EXTRA_PROTOCOL = "awg"
+   - HydraVpnService.startTunnel() с try/catch для UnsupportedOperationException
+   - При gomobile broken → явная ошибка "AWG недоступен", без фейкового connected
+
+3. AIVPN стабилизация:
+   - AIVPNTunnelProvider проверяет peer.key.isEmpty()
+   - Evidence через hb_stats.json (не только handshake)
+   - Explicit-режим блокирует failover (из 0.6.3)
+
+4. UI-пакет (из 0.6.0-0.6.3):
+   - Три головы сверху (AWG/WDTT/AIVPN), тап = явное подключение
+   - Большая центральная кнопка = AUTO (SmartConnect)
+   - Статус-строка: "Режим: X · работает Y · сервер Z"
+   - Заголовок "Hydra VPN"
+
+Версия 0.7.0+70.

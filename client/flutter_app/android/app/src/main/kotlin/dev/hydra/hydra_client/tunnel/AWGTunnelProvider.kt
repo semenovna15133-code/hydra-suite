@@ -38,14 +38,26 @@ class AWGTunnelProvider(
     }
     
     override fun connect(keyId: String): Boolean {
+        Log.i(TAG, "=== AWGTunnelProvider.connect() START ===")
+        Log.i(TAG, "AWG_DISABLED=$AWG_DISABLED")
+        
+        if (AWG_DISABLED) {
+            Log.e(TAG, "AWG is disabled (gomobile broken), refusing to start")
+            return false
+        }
+        
         val intent = Intent(context, HydraVpnService::class.java).apply {
             putExtra(HydraVpnService.EXTRA_KEY_ID, keyId)
+            putExtra(HydraVpnService.EXTRA_PROTOCOL, "awg")  // 0.7.0: явный протокол
         }
+        
+        Log.i(TAG, "Starting foreground service with protocol=awg")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
             context.startService(intent)
         }
+        Log.i(TAG, "=== AWGTunnelProvider.connect() END ===")
         return true
     }
     

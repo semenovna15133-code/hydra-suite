@@ -324,9 +324,19 @@ class HydraVpnService : VpnService() {
                 Log.w(TAG, "Failed to close previous tunnel", e)
             }
         }
-        tunnel = Tunnel.new_(cfg, protector)
-        tunnel!!.start(rawFd, cfg)
-        Log.i(TAG, "Tunnel started for key $keyId")
+                // 0.7.0: AWG может бросить UnsupportedOperationException (gomobile broken)
+        try {
+            tunnel = Tunnel.new_(cfg, protector)
+            tunnel!!.start(rawFd, cfg)
+            Log.i(TAG, "Tunnel started for key $keyId")
+        } catch (e: UnsupportedOperationException) {
+            Log.e(TAG, "AWG tunnel creation failed (gomobile broken): ${e.message}")
+            isRunning = false
+            isHandshakeComplete = false
+            tunFd?.close()
+            tunFd = null
+            throw e  // пробрасываем дальше для onError в MainActivity
+        }
         isHandshakeComplete = false
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
         snapshotStatsBase() // fresh base for AWG session
