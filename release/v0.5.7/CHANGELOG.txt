@@ -1,0 +1,12 @@
+Hydra Client 0.5.7 — AIVPN evidence через hb_stats + AWG timeout 15с
+
+1. AIVPN evidence-проверка через hb_stats.json (не только handshake):
+   - evidence-цикл идёт раньше, чем activeProviderName выставляется
+   - теперь AIVPN считается живым если handshake ИЛИ hbHasBytes
+   - Конец ложных "Evidence timeout for AIVPN" при живом bridge
+
+2. AWG evidence timeout 15с (было 12с):
+   - сервер иногда отвечает за 10-13с
+   - AWG получает достаточно времени на handshake
+
+3. Версия 0.5.7+57.

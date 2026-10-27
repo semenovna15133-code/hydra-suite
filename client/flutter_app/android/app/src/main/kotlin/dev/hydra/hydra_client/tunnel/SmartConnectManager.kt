@@ -226,8 +226,9 @@ object SmartConnectManager {
      * Таймауты: AWG 15с, AIVPN 10с, WDTT 12с.
      */
     private suspend fun tryConnectWithEvidence(provider: TunnelProvider, kid: String): Boolean {
+        // 0.5.7: AWG timeout 15с (сервер иногда отвечает за 10-13с)
         val timeoutMs = when (provider.name) {
-            "AmneziaWG" -> 12_000L
+            "AmneziaWG" -> 15_000L
             "AIVPN" -> 10_000L
             "WDTT" -> 20_000L
             else -> 15_000L
@@ -255,11 +256,15 @@ object SmartConnectManager {
         while (android.os.SystemClock.elapsedRealtime() - startTime < timeoutMs) {
             delay(2000)
             
-            // Признак жизни: handshake complete + ненулевой трафик или HEALTHY
+            // 0.5.7: alive-проверка через hb_stats.json для всех multiprotocol протоколов
+            // (activeProviderName выставляется после establish(), а evidence-цикл идёт раньше —
+            //  поэтому для AIVPN/WDTT используем hb_stats + handshake, а не только activeName)
             val activeName = dev.hydra.hydra_client.HydraVpnService.activeProviderName
+            val handshakeSet = dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete
             val alive = when (provider.name) {
                 "WDTT" -> wdttSocksAlive() || hbHasBytes()
-                else -> dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete && activeName == provider.name
+                "AIVPN" -> (handshakeSet || hbHasBytes())
+                else -> handshakeSet && activeName == provider.name
             }
             val handshakeOk = alive
             val hasTraffic = alive
