@@ -236,9 +236,17 @@ object SmartConnectManager {
         val startTime = android.os.SystemClock.elapsedRealtime()
         provider.connect(kid)
         
-        // 0.5.4: фиксированная задержка 2 сек перед evidence-циклом
-        // (даём туннелю время стартовать и создать hb_stats.json)
-        delay(2000)
+        // 0.5.5: фиксированная задержка перед evidence-циклом
+        // WDTT стартует за 3-4 сек (VK auth throttling + TURN credentials + handshake)
+        // AIVPN стартует за 2-3 сек
+        // AWG стартует мгновенно (но evidence требует handshake)
+        val preEvidenceDelay = when (provider.name) {
+            "WDTT" -> 5000L
+            "AIVPN" -> 3000L
+            else -> 2000L
+        }
+        Log.d(TAG, "0.5.5: delay(${preEvidenceDelay}ms) перед evidence-циклом для ${provider.name}")
+        delay(preEvidenceDelay)
         
         // Poll каждые 2 сек: проверяем handshake + traffic
         // 0.4.9: прерываем poll при смерти сервиса (конец evidence по мёртвому)

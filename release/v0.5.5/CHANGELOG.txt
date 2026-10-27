@@ -1,0 +1,9 @@
+Hydra Client 0.5.5 — per-protocol задержка перед evidence
+
+1. Задержка перед evidence-циклом теперь зависит от протокола:
+   WDTT=5000ms (VK auth + TURN credentials + DTLS handshake),
+   AIVPN=3000ms, AWG=2000ms. Конец ложных "Evidence timeout"
+   на старте — туннель успевает создать hb_stats.json.
+2. Лог "0.5.5: delay(Nms) перед evidence-циклом для <proto>"
+   для диагностики.
+3. Версия 0.5.5+55.
