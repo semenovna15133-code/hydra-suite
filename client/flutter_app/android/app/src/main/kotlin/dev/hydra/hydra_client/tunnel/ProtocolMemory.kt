@@ -64,18 +64,19 @@ object ProtocolMemory {
 
     fun clearPenalties(ctx: Context) {
         val ed = getPrefs(ctx).edit()
-        val now = android.os.SystemClock.elapsedRealtime()
-        // 0.4.7: защита свежих штрафов (не стирать если моложе 10 сек)
+        // 0.5.6: используем currentTimeMillis (не elapsedRealtime) — penaltyUntil хранится как wall-clock
+        val now = System.currentTimeMillis()
         var cleared = 0
         for (p in listOf("AmneziaWG", "WDTT", "AIVPN")) {
             val penaltyUntil = getPrefs(ctx).getLong("penalty_$p", 0L)
-            if (penaltyUntil > 0 && now >= penaltyUntil + 10_000L) {
+            // 0.5.6: убираем защиту свежих штрафов — emergency unlock должен чистить ВСЁ
+            if (penaltyUntil > 0) {
                 ed.putInt("fail_$p", 0).putLong("penalty_$p", 0L)
                 cleared++
             }
         }
         ed.apply()
-        Log.i(TAG, "Penalties cleared (network change): $cleared old penalties removed")
+        Log.i(TAG, "Penalties cleared (emergency unlock): $cleared penalties removed")
     }
 
     fun resetAll(ctx: Context) {

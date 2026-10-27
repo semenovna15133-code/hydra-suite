@@ -240,18 +240,19 @@ object SmartConnectManager {
         // WDTT стартует за 3-4 сек (VK auth throttling + TURN credentials + handshake)
         // AIVPN стартует за 2-3 сек
         // AWG стартует мгновенно (но evidence требует handshake)
+        // 0.5.6: AWG требует 3-7с на handshake (сервер отвечает медленно)
         val preEvidenceDelay = when (provider.name) {
             "WDTT" -> 5000L
             "AIVPN" -> 3000L
-            else -> 2000L
+            "AmneziaWG" -> 5000L
+            else -> 3000L
         }
         Log.d(TAG, "0.5.5: delay(${preEvidenceDelay}ms) перед evidence-циклом для ${provider.name}")
         delay(preEvidenceDelay)
         
-        // Poll каждые 2 сек: проверяем handshake + traffic
-        // 0.4.9: прерываем poll при смерти сервиса (конец evidence по мёртвому)
-        while (android.os.SystemClock.elapsedRealtime() - startTime < timeoutMs
-               && dev.hydra.hydra_client.HydraVpnService.isRunning) {
+        // 0.5.6: убираем isRunning из условия — timeoutMs достаточно
+        // (isRunning=false пока establish() не завершится, но это не значит что туннель мёртв)
+        while (android.os.SystemClock.elapsedRealtime() - startTime < timeoutMs) {
             delay(2000)
             
             // Признак жизни: handshake complete + ненулевой трафик или HEALTHY
@@ -342,7 +343,21 @@ object SmartConnectManager {
                 Log.i(TAG, "Roam survived: rx $rx0 -> $rx1 — tunnel kept")
                 return@launch
             }
-            Log.w(TAG, "Network changed and tunnel stalled (rx frozen at $rx0) — reconnect with fresh probe")
+            // 0.5.6: для multiprotocol проверяем hb_stats.json (трафик через hydra-bridge, не TUN)
+            val hbFile = dev.hydra.hydra_client.HydraVpnService.instance?.filesDir?.let { java.io.File(it, "hb_stats.json") }
+            val hbBytes = if (hbFile?.exists() == true) {
+                try {
+                    val j = org.json.JSONObject(hbFile.readText())
+                    j.optLong("rx_bytes") + j.optLong("tx_bytes")
+                } catch (_: Exception) { 0L }
+            } else 0L
+            
+            if (hbBytes > 0L) {
+                Log.i(TAG, "Network changed but hb_stats shows traffic ($hbBytes bytes) — tunnel alive")
+                return@launch
+            }
+            
+            Log.w(TAG, "Network changed and tunnel stalled (rx frozen at $rx0, hb=$hbBytes) — reconnect with fresh probe")
             activeProvider?.disconnect()
             activeProvider = null
             HealthMonitor.stop()

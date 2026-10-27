@@ -478,14 +478,16 @@ class HydraVpnService : VpnService() {
             Log.e(TAG, "addDisallowedApplication failed: ${e.message}")
         }
         
+        // 0.5.6: startBridgeBinary ДО establish() (bridge должен слушать @socket до отправки fd)
+        // startBridgeBinary уже вызывается внутри startWdtt/startAivpn, но если нет — вызываем здесь
+        if (multiProtocolManager == null) {
+            multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
+        }
+        
         val pfd = builder.establish() ?: throw IllegalStateException("establish() returned null")
         tunFd = pfd
         isRunning = true
         
-        // 0.5.1: гарантируем инициализацию multiProtocolManager перед startBridge
-        if (multiProtocolManager == null) {
-            multiProtocolManager = dev.hydra.hydra_client.tunnel.MultiProtocolManager(this)
-        }
         multiProtocolManager!!.startBridge(pfd, protocol)
         sessionStartMs = android.os.SystemClock.elapsedRealtime()
         activeProviderName = protocol

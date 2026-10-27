@@ -1,0 +1,28 @@
+Hydra Client 0.5.6 — шесть корневых фиксов SmartConnect
+
+1. Emergency unlock теперь РЕАЛЬНО чистит штрафы:
+   - clearPenalties использует currentTimeMillis (не elapsedRealtime)
+   - убрана защита свежих штрафов (emergency unlock = принудительный сброс)
+   - Конец "0 old penalties removed" и zombie-состояния
+
+2. AWG evidence delay 5000ms (было 2000ms):
+   - handshake требует 3-7с, теперь хватает времени
+   - Конец ложных "Evidence timeout for AmneziaWG"
+
+3. isRunning убран из evidence-цикла:
+   - цикл не прерывается пока establish() не завершится
+   - timeoutMs достаточно для контроля
+
+4. Network changed проверяет hb_stats.json:
+   - для multiprotocol трафик через hydra-bridge, не TUN
+   - Конец ложных "rx frozen at 3066" при живом bridge (79KB+)
+
+5. sendTunFd с ретраем (5 попыток, backoff 500-2500ms):
+   - bridge может стартовать 1-3 сек, одна попытка была недостаточна
+   - Конец "sendTunFd failed: Connection refused"
+
+6. startBridge гарантирован до establish():
+   - bridge должен слушать @socket до отправки fd
+   - Конец race condition между bridge и sendTunFd
+
+Версия 0.5.6+56.

@@ -273,20 +273,31 @@ class MultiProtocolManager(private val context: Context) {
 
     private fun sendTunFd(tunFd: ParcelFileDescriptor, socketName: String) {
         Thread {
-            try {
-                Thread.sleep(800) // ждём пока hydra-bridge начнёт слушать @socket
-                Log.i(TAG, "Sending TUN fd via @$socketName")
-                val client = android.net.LocalSocket()
-                client.connect(android.net.LocalSocketAddress(socketName, android.net.LocalSocketAddress.Namespace.ABSTRACT))
-                // Штатный API Android для SCM_RIGHTS: fd уйдёт вместе со следующей записью
-                client.setFileDescriptorsForSend(arrayOf(tunFd.fileDescriptor))
-                client.outputStream.write(1)
-                client.outputStream.flush()
-                Thread.sleep(300)
-                client.close()
-                Log.i(TAG, "TUN fd sent successfully")
-            } catch (e: Exception) {
-                Log.e(TAG, "sendTunFd failed: ${e.message}")
+            // 0.5.6: ретрай с backoff (bridge может стартовать 1-3 сек)
+            var attempts = 0
+            val maxAttempts = 5
+            val backoffMs = listOf(500L, 1000L, 1500L, 2000L, 2500L)
+            
+            while (attempts < maxAttempts) {
+                try {
+                    Thread.sleep(backoffMs[attempts])
+                    Log.i(TAG, "Sending TUN fd via @$socketName (attempt ${attempts + 1}/$maxAttempts)")
+                    val client = android.net.LocalSocket()
+                    client.connect(android.net.LocalSocketAddress(socketName, android.net.LocalSocketAddress.Namespace.ABSTRACT))
+                    client.setFileDescriptorsForSend(arrayOf(tunFd.fileDescriptor))
+                    client.outputStream.write(1)
+                    client.outputStream.flush()
+                    Thread.sleep(300)
+                    client.close()
+                    Log.i(TAG, "TUN fd sent successfully")
+                    return@Thread
+                } catch (e: Exception) {
+                    attempts++
+                    Log.w(TAG, "sendTunFd attempt $attempts failed: ${e.message}")
+                    if (attempts >= maxAttempts) {
+                        Log.e(TAG, "sendTunFd failed after $maxAttempts attempts")
+                    }
+                }
             }
         }.start()
     }
