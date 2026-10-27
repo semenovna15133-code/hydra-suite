@@ -1,0 +1,20 @@
+Hydra Client 0.6.0 — UI-пакет
+
+1. Ядро-кнопка = индикатор факта:
+   - при connected label = фактический протокол (WDTT/AWG/AIVPN)
+   - при disconnected label = preferred (AUTO/AWG/WDTT/AIVPN)
+   - конец рассинхрона "центр=AUTO при живом WDTT"
+
+2. Тоггл-головы (AUTO по центру):
+   - 4 головы: AWG · AUTO · WDTT · AIVPN
+   - тап по AWG → preferred=awg, повторный тап → preferred=auto
+   - тап по AUTO → preferred=auto
+
+3. Строка статуса при connected:
+   "Режим: AUTO · работает WDTT · сервер 31.77.202.131:56000"
+   (показывает preferred + фактический протокол + endpoint)
+
+4. Хелпер _getActiveProtocol() извлекает фактический протокол
+   из _serverInfo (AmneziaWG/WDTT/AIVPN).
+
+Версия 0.6.0+60.
