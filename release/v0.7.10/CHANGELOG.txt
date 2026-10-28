@@ -1,0 +1,30 @@
+Hydra Client 0.7.10 — расширенное логирование для диагностики whiteList override
+
+В 0.7.9 whiteList override не срабатывал на нерестриктивных сетях —
+приложение уходило в 45-секундный детур на WDTT вместо переподнятия AWG.
+Причина неясна: либо lastSuccessMs не читается из SharedPreferences,
+либо логика override применяется в неправильном месте.
+
+0.7.10 добавляет детальное логирование каждого шага:
+
+1. ProtocolMemory.recordSuccess() расширенный лог:
+   - "recordSuccess: wrote last_success_AmneziaWG=1698519614000 for protocol=AmneziaWG"
+   - Точный ключ SharedPreferences и значение
+
+2. ProtocolMemory.lastSuccessMs() расширенный лог:
+   - "lastSuccessMs: read last_success_AmneziaWG=1698519614000 for proto=AmneziaWG"
+   - Что реально читается из SharedPreferences
+
+3. SmartConnectManager — whiteList override расширенный лог:
+   - "whiteList=true: checking recent AWG/AIVPN success"
+   - "whiteList check: nowMs=1698519674000, awgLast=1698519614000, aiLast=0, awgOk=60s, aiOk=1698519674s"
+   - Если override сработал: "whiteList overridden: recent AWG/AIVPN success (awg=60s ago, aivpn=1698519674s ago) — network not restrictive"
+   - Если НЕ сработал: "whiteList NOT overridden: no recent AWG/AIVPN success"
+   - Если whiteList=false: "whiteList=false: skipping override check"
+
+4. SmartConnectManager — лог финальных scores:
+   - "Scoring: candidates=WDTT=110, AmneziaWG=77, AIVPN=60"
+   - "Scoring: sorted=WDTT=110, AmneziaWG=77, AIVPN=60"
+   - Видно применён ли whiteList-бонус (+50 к WDTT)
+
+Версия 0.7.10+80.

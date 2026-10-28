@@ -131,13 +131,21 @@ object SmartConnectManager {
         
         var whiteList = EnvironmentProbe.whiteListDetected
         if (whiteList) {  // 0.7.9: сеть не рестриктивная, если AWG/AIVPN недавно успели
+            Log.i(TAG, "whiteList=true: checking recent AWG/AIVPN success")  // 0.7.10 debug
             val nowMs = System.currentTimeMillis()
-            val awgOk = nowMs - ProtocolMemory.lastSuccessMs(ctx, "AmneziaWG")
-            val aiOk = nowMs - ProtocolMemory.lastSuccessMs(ctx, "AIVPN")
+            val awgLast = ProtocolMemory.lastSuccessMs(ctx, "AmneziaWG")
+            val aiLast = ProtocolMemory.lastSuccessMs(ctx, "AIVPN")
+            val awgOk = nowMs - awgLast
+            val aiOk = nowMs - aiLast
+            Log.i(TAG, "whiteList check: nowMs=$nowMs, awgLast=$awgLast, aiLast=$aiLast, awgOk=${awgOk/1000}s, aiOk=${aiOk/1000}s")  // 0.7.10 debug
             if (awgOk < 300_000L || aiOk < 300_000L) {
                 Log.w(TAG, "whiteList overridden: recent AWG/AIVPN success (awg=${awgOk/1000}s ago, aivpn=${aiOk/1000}s ago) — network not restrictive")
                 whiteList = false
+            } else {
+                Log.i(TAG, "whiteList NOT overridden: no recent AWG/AIVPN success")  // 0.7.10 debug
             }
+        } else {
+            Log.i(TAG, "whiteList=false: skipping override check")  // 0.7.10 debug
         }
         val hashCount = dev.hydra.hydra_client.SettingsStore.getHashList(ctx).size
         val preferred = dev.hydra.hydra_client.SettingsStore.getPreferredProtocol(ctx)
@@ -197,8 +205,10 @@ object SmartConnectManager {
 
         // Tiebreaker: при равных баллах приоритет AWG > WDTT > AIVPN
         val tiebreakerOrder = mapOf("AmneziaWG" to 0, "AIVPN" to 1, "WDTT" to 2)
+        Log.i(TAG, "Scoring: candidates=${candidates.map { "${it.first.name}=${it.second}" }.joinToString(", ")}")  // 0.7.10 debug
         val sorted = candidates.sortedWith(compareByDescending<Pair<dev.hydra.hydra_client.tunnel.TunnelProvider, Int>> { it.second }
             .thenBy { tiebreakerOrder[it.first.name] ?: 99 })
+        Log.i(TAG, "Scoring: sorted=${sorted.map { "${it.first.name}=${it.second}" }.joinToString(", ")}")  // 0.7.10 debug
         // 0.7.4: preferred-first НЕ уничтожается пересортировкой по score
         val candidatesFinal = if (preferred != "auto") {
             val prefEntry = scored.find { it.first.name.equals(preferred, ignoreCase = true) && it.second > 0 }

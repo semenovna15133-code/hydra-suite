@@ -26,7 +26,10 @@ object ProtocolMemory {
     }
     
     fun recordSuccess(ctx: Context, protocol: String) {
-        getPrefs(ctx).edit().putLong("last_success_" + protocol, System.currentTimeMillis()).apply()  // 0.7.9
+        val key = "last_success_" + protocol
+        val now = System.currentTimeMillis()
+        getPrefs(ctx).edit().putLong(key, now).apply()  // 0.7.9
+        Log.i(TAG, "recordSuccess: wrote $key=$now for protocol=$protocol")  // 0.7.10 debug
         getPrefs(ctx).edit()
             .putInt("fail_$protocol", 0)
             .putInt("success_$protocol", getSuccessCount(ctx, protocol) + 1)
@@ -86,6 +89,10 @@ object ProtocolMemory {
     }
 
     // 0.7.9: время последнего успешного подключения протокола
-    fun lastSuccessMs(ctx: android.content.Context, proto: String): Long =
-        getPrefs(ctx).getLong("last_success_" + proto, 0L)
+    fun lastSuccessMs(ctx: android.content.Context, proto: String): Long {
+        val key = "last_success_" + proto
+        val value = getPrefs(ctx).getLong(key, 0L)
+        Log.i(TAG, "lastSuccessMs: read $key=$value for proto=$proto")  // 0.7.10 debug
+        return value
+    }
 }
