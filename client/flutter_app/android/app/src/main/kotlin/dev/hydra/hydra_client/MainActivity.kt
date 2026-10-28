@@ -106,6 +106,30 @@ class MainActivity : FlutterActivity() {
 
 
     // 0.7.3: запрос exemption от Doze battery optimization (разово)
+    // 0.7.7: лог сразу в Загрузки через MediaStore (без разрешений на API 29+)
+    private fun copyLogToDownloads(src: java.io.File): String? {
+        if (android.os.Build.VERSION.SDK_INT < 29) return null
+        return try {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, src.name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return null
+            contentResolver.openOutputStream(uri)?.use { os -> src.inputStream().use { it.copyTo(os) } }
+            values.clear()
+            values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            Log.i("HydraUI", "Log copied to Downloads: ${src.name}")
+            uri.toString()
+        } catch (e: Exception) {
+            Log.w("HydraUI", "Copy to Downloads failed: ${e.message}")
+            null
+        }
+    }
+
     private fun ensureNotBatteryOptimized() {
         Log.i("HydraUI", "ensureNotBatteryOptimized: checking exemption status")
         val pm = getSystemService(POWER_SERVICE) as PowerManager
@@ -559,8 +583,14 @@ class MainActivity : FlutterActivity() {
                         packageManager.queryIntentActivities(send, PackageManager.MATCH_DEFAULT_ONLY).forEach { ri ->
                             grantUriPermission(ri.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        startActivity(Intent.createChooser(send, "Отправить логи…"))
-                        result.success(out.absolutePath)
+                        val savedUri = copyLogToDownloads(out)
+                        if (savedUri != null) {
+                            android.widget.Toast.makeText(applicationContext, "Лог сохранён: Загрузки/" + out.name, android.widget.Toast.LENGTH_LONG).show()
+                            result.success("Загрузки/" + out.name)
+                        } else {
+                            startActivity(Intent.createChooser(send, "Отправить логи…"))
+                            result.success(out.absolutePath)
+                        }
                     } catch (e: Exception) {
                         result.error("LOGS_FAIL", e.message, null)
                     }

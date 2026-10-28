@@ -1,0 +1,21 @@
+Hydra Client 0.7.7 — «Собрать логи» прямо в Загрузки
+
+1. Кнопка «Собрать логи» в настройках:
+   - Лог сразу пишется в public Downloads через MediaStore.Downloads
+   - Без Telegram-круга: файл доступен в папке «Загрузки» файлового менеджера
+   - Тост: «Лог сохранён: Загрузки/hydra-logs-HHMMSS.txt»
+   - Fallback: шаринг (старое поведение) если MediaStore недоступен
+   - Без дополнительных permission (MediaStore API на Android 10+)
+
+2. sessionExplicit flag (из 0.7.6):
+   - Конец ложной блокировке failover в AUTO-режиме
+   - Источник правды: HydraVpnService.sessionExplicit
+
+3. WakeLock + SCREEN_ON receiver (из 0.7.3):
+   - CPU не засыпает при выключении экрана
+   - WDTT-сессии не закрываются по idle-timeout
+
+4. Диагностика WDTT (из 0.7.5):
+   - wdttSessionStartMs + session age при tcp active closed
+
+Версия 0.7.7+77.
