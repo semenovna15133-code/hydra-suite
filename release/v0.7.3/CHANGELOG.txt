@@ -1,0 +1,27 @@
+Hydra Client 0.7.3 — защита от Doze/заморозки экрана
+
+Корень проблемы 0.7.2: массовая смерть WDTT-сессий через 10-14с после
+выключения экрана (16:44, 17:08 логи). Механизм:
+  экран выкл → Doze замораживает wdtt-client → keepalive не идут
+  → VK TURN закрывает idle TCP-сессии → телефон спит, клиент не видит
+  → пробуждение → залп "active closed" → даунтайм 53с
+
+1. WakeLock (PARTIAL_WAKE_LOCK):
+   - acquire при старте туннеля (AWG и multiprotocol)
+   - release в stop()
+   - CPU не засыпает → keepalive идут → TURN не закрывает сессии
+   - safety cap 24ч (на случай утечки)
+
+2. SCREEN_ON receiver:
+   - регистрируется при старте туннеля
+   - при пробуждении: мгновенная проверка processesAlive() (WDTT/AIVPN)
+     или handshakeAgeMs (AWG)
+   - если мёртв → ReconnectManager.triggerReconnect("screen-on-wake")
+   - unregister в stop()
+
+3. Battery optimization exemption (разовый диалог):
+   - ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS при первом запуске
+   - Fallback: ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+   - Разрешение WAKE_LOCK в AndroidManifest
+
+Версия 0.7.3+73.
