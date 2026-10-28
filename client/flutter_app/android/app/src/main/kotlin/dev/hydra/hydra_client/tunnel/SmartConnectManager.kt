@@ -201,7 +201,23 @@ object SmartConnectManager {
         if (candidates.isEmpty()) {
             if (retryAfterUnlock && ProtocolMemory.getPrefs(ctx).all.isNotEmpty()) {
                 Log.w(TAG, "No viable candidates — emergency unlock penalties and rescore once")
-                ProtocolMemory.clearPenalties(ctx)
+                // 0.7.8: whiteList-перехват РАНЬше hb-проверки (hb накопительный и врёт «жив»)
+            try {
+                val kfW = keyfilekt.Keyfile.parse(java.io.File(ctx.filesDir, "keys/${sanitizeKeyId(kid)}.key").absolutePath)
+                val epW = kfW.peers.firstOrNull()?.endpoint ?: ""
+                if (epW.isNotEmpty()) EnvironmentProbe.probe(ctx, epW)
+            } catch (_: Exception) {}
+            val wlNow = EnvironmentProbe.whiteListDetected
+            val curProto = dev.hydra.hydra_client.HydraVpnService.activeProviderName
+            if (wlNow && curProto in listOf("AIVPN", "AmneziaWG") && dev.hydra.hydra_client.HydraVpnService.isRunning) {
+                Log.w(TAG, "Network changed to whiteList with $curProto active — forcing failover to WDTT")
+                activeProvider?.disconnect()
+                activeProvider = null
+                HealthMonitor.stop()
+                kotlinx.coroutines.delay(1500)
+                return autoConnect(ctx, kid)
+            }
+            ProtocolMemory.clearPenalties(ctx)
                 return autoConnectInner(ctx, kid, false)
             }
             Log.e(TAG, "No viable candidates (all scored 0 or penalized)")
@@ -347,18 +363,33 @@ object SmartConnectManager {
                 }
                 val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
                 val tx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+                val hb0 = readHbStats()  // 0.7.8: точка отсчёта
                 kotlinx.coroutines.delay(6000)
                 val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
                 val tx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
-                val hb = readHbStats()
-                val alive = (rx1 > rx0) || (tx1 > tx0) || (hb != null && (hb.first > 0L || hb.second > 0L))
+                val hb1 = readHbStats()
+                val alive = (rx1 > rx0) || (tx1 > tx0) || (hb0 != null && hb1 != null && (hb1.first > hb0.first || hb1.second > hb0.second))  // 0.7.8: дельта, не накопление
                 if (!alive) {
-                    Log.w(TAG, "Network changed in explicit mode — tunnel stale, reconnecting $expl")
                     activeProvider?.disconnect()
                     activeProvider = null
                     HealthMonitor.stop()
                     kotlinx.coroutines.delay(1500)
-                    connectExplicit(ctx, kid, expl)
+                    // 0.7.8: на whiteList-сети тот же протокол жить не может — честный переход
+                    var wl2 = false
+                    try {
+                        val kf3 = keyfilekt.Keyfile.parse(java.io.File(ctx.filesDir, "keys/${sanitizeKeyId(kid)}.key").absolutePath)
+                        val ep3 = kf3.peers.firstOrNull()?.endpoint ?: ""
+                        if (ep3.isNotEmpty()) EnvironmentProbe.probe(ctx, ep3)
+                        wl2 = EnvironmentProbe.whiteListDetected
+                    } catch (_: Exception) {}
+                    if (wl2 && expl in listOf("AIVPN", "AmneziaWG")) {
+                        Log.w(TAG, "Network changed in explicit mode: whiteList detected — $expl cannot work here; honest switch to WDTT via autoConnect")
+                        dev.hydra.hydra_client.HydraVpnService.sessionExplicit = false
+                        autoConnect(ctx, kid)
+                    } else {
+                        Log.w(TAG, "Network changed in explicit mode — tunnel stale, reconnecting $expl")
+                        connectExplicit(ctx, kid, expl)
+                    }
                 } else {
                     Log.i(TAG, "Network changed in explicit mode — tunnel alive, kept")
                 }

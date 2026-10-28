@@ -1,0 +1,28 @@
+Hydra Client 0.7.8 — честный роуминг при смене сети (whiteList-aware)
+
+Корень проблемы 0.7.7: при переходе WiFi→4G (whiteList-сеть) с активным
+AIVPN/WDTT приложение оставляло мёртвый туннель вместо перехода на WDTT.
+
+Причина: hb_stats.json хранит НАКОПИТЕЛЬНЫЙ счётчик с начала сессии.
+Проверка `hb.first > 0L || hb.second > 0L` возвращала TRUE даже на мёртвом
+туннеле (старые мегабайты из файла) → whiteList-ветка и failover не достигались.
+
+1. Explicit-ветка: дельта вместо накопления
+   - hb0 = readHbStats() перед окном наблюдения (6 сек)
+   - hb1 = readHbStats() после окна
+   - alive = (hb1.first > hb0.first) || (hb1.second > hb0.second) — ДВИЖЕНИЕ
+   - Конец ложному «tunnel alive, kept» на мёртвом AIVPN
+
+2. Explicit stale + whiteList → честный переход на WDTT
+   - Если tunnel stale И whiteList detected И active = AIVPN/AWG:
+     * НЕ ретрай мертвеца (AIVPN не работает на whiteList)
+     * Честный переход: sessionExplicit=false → autoConnect(ctx, kid)
+   - В логе: "Network changed in explicit mode: whiteList detected — AIVPN cannot work here; honest switch to WDTT via autoConnect"
+
+3. AUTO-путь: whiteList-перехват ДО hb-проверки
+   - fresh probe при смене сети (EnvironmentProbe.probe)
+   - Если whiteList=true И active=AIVPN/AWG → forcing failover to WDTT
+   - Возврат ДО накопительного hb-early-return
+   - В логе: "Network changed to whiteList with AIVPN active — forcing failover to WDTT"
+
+Версия 0.7.8+78.
