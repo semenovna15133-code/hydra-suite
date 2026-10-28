@@ -57,6 +57,11 @@ object SmartConnectManager {
     private fun scheduleSupervisedRetries(ctx: Context, kid: String) {
         supervisedRetryJob?.cancel()
         supervisedRetryJob = ncScope.launch {
+            // 0.7.4: не перехватываем сессию в explicit-режиме
+            if (dev.hydra.hydra_client.MainActivity.explicitProtocol != null) {
+                Log.i(TAG, "Supervised retries skipped: explicit mode")
+                return@launch
+            }
             var delayMs = 15_000L
             repeat(4) { i ->
                 kotlinx.coroutines.delay(delayMs)
@@ -184,7 +189,13 @@ object SmartConnectManager {
         val tiebreakerOrder = mapOf("AmneziaWG" to 0, "AIVPN" to 1, "WDTT" to 2)
         val sorted = candidates.sortedWith(compareByDescending<Pair<dev.hydra.hydra_client.tunnel.TunnelProvider, Int>> { it.second }
             .thenBy { tiebreakerOrder[it.first.name] ?: 99 })
-        val candidatesFinal = sorted
+        // 0.7.4: preferred-first НЕ уничтожается пересортировкой по score
+        val candidatesFinal = if (preferred != "auto") {
+            val prefEntry = scored.find { it.first.name.equals(preferred, ignoreCase = true) && it.second > 0 }
+            if (prefEntry != null) {
+                listOf(prefEntry) + sorted.filter { it.first.name != prefEntry.first.name }
+            } else sorted
+        } else sorted
         
         if (candidates.isEmpty()) {
             if (retryAfterUnlock && ProtocolMemory.getPrefs(ctx).all.isNotEmpty()) {
@@ -324,6 +335,34 @@ object SmartConnectManager {
             kotlinx.coroutines.delay(3000) // дебаунс: даём сети устаканиться
             val ctx = context ?: return@launch
             val kid = keyId ?: return@launch
+            // 0.7.4: explicit-режим — переподнимаем тот же протокол, без подмены
+            val expl = dev.hydra.hydra_client.MainActivity.explicitProtocol
+            if (expl != null) {
+                kotlinx.coroutines.delay(3000)
+                if (!HydraVpnService.isRunning) {
+                    Log.i(TAG, "Network changed in explicit mode (idle) — reconnecting $expl")
+                    connectExplicit(ctx, kid, expl)
+                    return@launch
+                }
+                val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
+                val tx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+                kotlinx.coroutines.delay(6000)
+                val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
+                val tx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+                val hb = readHbStats()
+                val alive = (rx1 > rx0) || (tx1 > tx0) || (hb != null && (hb.first > 0L || hb.second > 0L))
+                if (!alive) {
+                    Log.w(TAG, "Network changed in explicit mode — tunnel stale, reconnecting $expl")
+                    activeProvider?.disconnect()
+                    activeProvider = null
+                    HealthMonitor.stop()
+                    kotlinx.coroutines.delay(1500)
+                    connectExplicit(ctx, kid, expl)
+                } else {
+                    Log.i(TAG, "Network changed in explicit mode — tunnel alive, kept")
+                }
+                return@launch
+            }
             ProtocolMemory.clearPenalties(ctx)
             if (!HydraVpnService.isRunning) {
                 Log.i(TAG, "Network changed (idle): penalties cleared")
@@ -364,6 +403,12 @@ object SmartConnectManager {
             
             // 0.7.2: whiteList-aware failover
             // Если новая сеть = whiteList и текущий протокол = AIVPN/AWG -> немедленный failover на WDTT
+            // 0.7.4: свежая проба — кэш whiteListDetected остался от СТАРОЙ сети
+            try {
+                val kf2 = keyfilekt.Keyfile.parse(java.io.File(ctx.filesDir, "keys/${sanitizeKeyId(kid)}.key").absolutePath)
+                val ep2 = kf2.peers.firstOrNull()?.endpoint ?: ""
+                if (ep2.isNotEmpty()) EnvironmentProbe.probe(ctx, ep2)
+            } catch (_: Exception) {}
             val newWhiteList = EnvironmentProbe.whiteListDetected
             val currentProto = dev.hydra.hydra_client.HydraVpnService.activeProviderName
             if (newWhiteList && currentProto in listOf("AIVPN", "AmneziaWG")) {
@@ -391,6 +436,7 @@ object SmartConnectManager {
             context = ctx
             keyId = kid
             Log.i(TAG, "=== Explicit connect: $protocol (no SmartConnect scoring, no failover) ===")
+            supervisedRetryJob?.cancel()  // 0.7.4: фоновые ретраи не мешают явному тапу
             val keysDir = java.io.File(ctx.filesDir, "keys")
             val keyFile = java.io.File(keysDir, "${sanitizeKeyId(kid)}.key")
             if (!keyFile.exists()) {

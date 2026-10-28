@@ -131,7 +131,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        ensureNotBatteryOptimized()
+        // 0.7.4: отложенно — activity должна быть прикреплена, иначе startActivity молча падает
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ ensureNotBatteryOptimized() }, 2500)
         Keyfile.initRuntime()
         setupSettingsChannel(flutterEngine)
 

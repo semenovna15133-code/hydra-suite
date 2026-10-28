@@ -1,0 +1,23 @@
+Hydra Client 0.7.4 — три фикса роуминга + preferred-first
+
+1. preferred-first не уничтожается пересортировкой:
+   - Тап на WDTT теперь стартует WDTT (не AWG с более высоким score)
+   - Список кандидатов: preferred первым, остальные по score
+
+2. supervised retries не перехватывают explicit-сессию:
+   - Фоновые ретраи (15/30/60/120с) пропускаются в explicit-режиме
+   - connectExplicit отменяет scheduled retries при старте
+
+3. whiteList-ветка: свежая проба вместо кэша:
+   - EnvironmentProbe.probe() вызывается заново на новой сети
+   - whiteListDetected не остаётся от старой WiFi-пробы
+
+4. explicit-реконнект того же протокола при смене сети:
+   - WiFi→4G при explicit WDTT → WDTT переподнят (не зависает)
+   - Проверка alive через rx/tx/hb_stats, reconnectExplicit()
+
+5. диалог батареи через 2.5с после старта:
+   - activity должна быть прикреплена, иначе startActivity молча падает
+   - ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS запрашивается разово
+
+Версия 0.7.4+74.
