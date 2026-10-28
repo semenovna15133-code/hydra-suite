@@ -1,0 +1,20 @@
+Hydra Client 0.7.2 — whiteList-aware failover + AIVPN стабилизация
+
+1. onNetworkChanged whiteList-aware failover:
+   - При переходе WiFi→4G (whiteList) и activeProvider = AIVPN/AWG
+   - Немедленный failover на WDTT (без ожидания rx-stall)
+   - В логе: "Network changed to whiteList — forcing failover from AIVPN to WDTT"
+
+2. sendTunFd retry 5→10:
+   - Bridge может стартовать 5-8 сек
+   - Backoff: 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000ms
+
+3. AIVPN TMPDIR без su:
+   - mkdir -p /tmp + ln -sf без su
+   - Fallback: AIVPN использует только TMPDIR=cacheDir/aivpn-tmp
+
+4. Zombie-detector проверяет hb_stats:
+   - Если hb_stats.json показывает rx+tx>0, НЕ штрафуем AIVPN
+   - Конец ложных штрафов при живом трафике через bridge
+
+Версия 0.7.2+72.

@@ -84,8 +84,21 @@ class MultiProtocolManager(private val context: Context) {
             if (match != null) {
                 val count = match.groupValues[1].toInt()
                 if (count >= 3) {
-                    Log.e(TAG, "AIVPN zombie detected: $count consecutive handshake failures — penalizing AIVPN")
-                    ProtocolMemory.recordFailure(context, "AIVPN")
+                    // 0.7.2: проверяем hb_stats — если есть трафик, не штрафуем
+                    val hbFile = java.io.File(context.filesDir, "hb_stats.json")
+                    val hasTraffic = if (hbFile.exists()) {
+                        try {
+                            val j = org.json.JSONObject(hbFile.readText())
+                            (j.optLong("rx_bytes") + j.optLong("tx_bytes")) > 0L
+                        } catch (_: Exception) { false }
+                    } else false
+                    
+                    if (hasTraffic) {
+                        Log.w(TAG, "AIVPN zombie detected ($count failures) but hb_stats shows traffic — not penalizing")
+                    } else {
+                        Log.e(TAG, "AIVPN zombie detected: $count consecutive handshake failures — penalizing AIVPN")
+                        ProtocolMemory.recordFailure(context, "AIVPN")
+                    }
                 }
             }
         }
@@ -154,13 +167,15 @@ class MultiProtocolManager(private val context: Context) {
             )).redirectErrorStream(false)
             pb.environment()["TMPDIR"] = aivpnTmpDir.absolutePath
             Log.i(TAG, "AIVPN TMPDIR set to: ${aivpnTmpDir.absolutePath}")
-            // Создаём symlink /tmp/aivpn-* → cacheDir через su (AIVPN может игнорировать TMPDIR)
+            // 0.7.2: создаём директорию /tmp/aivpn-* без su (su нет на большинстве устройств)
             try {
-                val suPb = ProcessBuilder("su", "-c", "ln -sf ${aivpnTmpDir.absolutePath} /tmp/aivpn-*")
-                suPb.start().waitFor()
-                Log.i(TAG, "Symlink /tmp/aivpn-* -> ${aivpnTmpDir.absolutePath} created")
+                val mkdirPb = ProcessBuilder("mkdir", "-p", "/tmp")
+                mkdirPb.start().waitFor()
+                val lnPb = ProcessBuilder("ln", "-sf", aivpnTmpDir.absolutePath, "/tmp/aivpn-$$")
+                lnPb.start().waitFor()
+                Log.i(TAG, "Symlink /tmp/aivpn-$$ -> ${aivpnTmpDir.absolutePath} created (no su)")
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to create symlink: ${e.message}")
+                Log.w(TAG, "Failed to create symlink (no su): ${e.message} — AIVPN will use TMPDIR only")
             }
             aivpnProcess = pb.start()
             streamToLogcat(aivpnProcess!!, "aivpn-client")
@@ -275,8 +290,8 @@ class MultiProtocolManager(private val context: Context) {
         Thread {
             // 0.5.6: ретрай с backoff (bridge может стартовать 1-3 сек)
             var attempts = 0
-            val maxAttempts = 5
-            val backoffMs = listOf(500L, 1000L, 1500L, 2000L, 2500L)
+            val maxAttempts = 10  // 0.7.2: bridge может стартовать 5-8 сек
+            val backoffMs = listOf(500L, 1000L, 1500L, 2000L, 2500L, 3000L, 3500L, 4000L, 4500L, 5000L)
             
             while (attempts < maxAttempts) {
                 try {

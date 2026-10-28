@@ -362,6 +362,20 @@ object SmartConnectManager {
                 return@launch
             }
             
+            // 0.7.2: whiteList-aware failover
+            // Если новая сеть = whiteList и текущий протокол = AIVPN/AWG -> немедленный failover на WDTT
+            val newWhiteList = EnvironmentProbe.whiteListDetected
+            val currentProto = dev.hydra.hydra_client.HydraVpnService.activeProviderName
+            if (newWhiteList && currentProto in listOf("AIVPN", "AmneziaWG")) {
+                Log.w(TAG, "Network changed to whiteList — forcing failover from $currentProto to WDTT")
+                activeProvider?.disconnect()
+                activeProvider = null
+                HealthMonitor.stop()
+                kotlinx.coroutines.delay(1500)
+                autoConnect(ctx, kid)
+                return@launch
+            }
+            
             Log.w(TAG, "Network changed and tunnel stalled (rx frozen at $rx0, hb=$hbBytes) — reconnect with fresh probe")
             activeProvider?.disconnect()
             activeProvider = null
