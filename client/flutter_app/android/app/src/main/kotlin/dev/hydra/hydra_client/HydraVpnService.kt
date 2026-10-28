@@ -209,6 +209,9 @@ class HydraVpnService : VpnService() {
         const val EXTRA_PROTOCOL = "protocol"
         const val EXTRA_AIVPN_KEY = "aivpn_key"
         const val EXTRA_WDTT_PASSWORD = "wdtt_password"
+        // 0.7.6: источник правды о режиме сессии (true только если сессия начата явным тапом)
+        @Volatile
+        var sessionExplicit: Boolean = false
         const val EXTRA_ENDPOINT = "endpoint"
         const val EXTRA_WDTT_VK_HASHES = "wdtt_vk_hashes"
         const val EXTRA_WDTT_WORKERS = "wdtt_workers"

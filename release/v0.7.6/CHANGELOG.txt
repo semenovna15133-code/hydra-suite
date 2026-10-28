@@ -1,0 +1,35 @@
+Hydra Client 0.7.6 — sessionExplicit flag (фикс ложной блокировки failover)
+
+Корень проблемы 0.7.5: в AUTO-режиме при массовой смерти WDTT
+ReconnectManager блокировал failover с сообщением
+"WDTT dead in explicit mode — stop, no failover", хотя сессия была AUTO.
+
+Причина: `MainActivity.explicitProtocol` — статическая переменная, которая
+оставалась установленной от предыдущего явного тапа и не сбрасывалась при
+переходе на AUTO. В результате `if (explicitProtocol != null)` в guard'ах
+стрелял ложно.
+
+1. HydraVpnService.sessionExplicit (новый источник правды):
+   - Выставляется в двух воронках подключения:
+     * connectExplicit() → true (явный тап на голову протокола)
+     * autoConnectInner() → false (тап на центральную кнопку AUTO)
+   - volatile — читаем актуальное значение из всех корутин
+
+2. SmartConnectManager: все guard'ы читают sessionExplicit
+   - failover: `if (HydraVpnService.sessionExplicit)` вместо explicitProtocol
+   - onNetworkChanged: explicit-ветка по sessionExplicit
+   - uiMessage-guard: по sessionExplicit
+
+3. ReconnectManager.onWdttDead: guard по sessionExplicit
+   - Конец ложной блокировке: "WDTT dead in explicit session" только если
+     реально в explicit-сессии
+
+4. Диалог батареи:
+   - Permission REQUEST_IGNORE_BATTERY_OPTIMIZATIONS в AndroidManifest
+   - Улучшенное логирование: isExempt=true/false, точное исключение в catch
+
+5. Диагностика массовой смерти WDTT:
+   - Поле wdttSessionStartMs: время старта WDTT-процесса
+   - При "tcp active closed": session age (сколько секунд жила сессия)
+
+Версия 0.7.6+76.

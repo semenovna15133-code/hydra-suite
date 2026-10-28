@@ -93,6 +93,7 @@ object SmartConnectManager {
 
         context = ctx
         keyId = kid
+        dev.hydra.hydra_client.HydraVpnService.sessionExplicit = false  // 0.7.6: AUTO-путь
         Log.i(TAG, "Starting Smart Connect...")
         
         // Парсим keyfile и строим провайдеры динамически
@@ -336,7 +337,7 @@ object SmartConnectManager {
             val ctx = context ?: return@launch
             val kid = keyId ?: return@launch
             // 0.7.4: explicit-режим — переподнимаем тот же протокол, без подмены
-            val expl = dev.hydra.hydra_client.MainActivity.explicitProtocol
+            val expl = if (dev.hydra.hydra_client.HydraVpnService.sessionExplicit) dev.hydra.hydra_client.MainActivity.explicitProtocol else null  // 0.7.6
             if (expl != null) {
                 kotlinx.coroutines.delay(3000)
                 if (!HydraVpnService.isRunning) {
@@ -436,7 +437,8 @@ object SmartConnectManager {
             context = ctx
             keyId = kid
             Log.i(TAG, "=== Explicit connect: $protocol (no SmartConnect scoring, no failover) ===")
-            supervisedRetryJob?.cancel()  // 0.7.4: фоновые ретраи не мешают явному тапу
+            supervisedRetryJob?.cancel()
+            dev.hydra.hydra_client.HydraVpnService.sessionExplicit = true  // 0.7.6  // 0.7.4: фоновые ретраи не мешают явному тапу
             val keysDir = java.io.File(ctx.filesDir, "keys")
             val keyFile = java.io.File(keysDir, "${sanitizeKeyId(kid)}.key")
             if (!keyFile.exists()) {
@@ -473,8 +475,8 @@ object SmartConnectManager {
     suspend fun failover(currentProvider: TunnelProvider?): Boolean {
 
         // 0.6.3: explicit-режим — НЕ переключаемся на другой протокол за спиной пользователя
-        if (dev.hydra.hydra_client.MainActivity.explicitProtocol != null) {
-            Log.w(TAG, "failover blocked: explicit mode (${dev.hydra.hydra_client.MainActivity.explicitProtocol})")
+        if (dev.hydra.hydra_client.HydraVpnService.sessionExplicit) {
+            Log.w(TAG, "failover blocked: explicit session (${dev.hydra.hydra_client.MainActivity.explicitProtocol})")
             return false
         }
         val ctx = context ?: return false
@@ -496,7 +498,7 @@ object SmartConnectManager {
     
     private fun uiMessage(m: String) {
         // 0.7.1: в explicit-режиме не перетираем статус-сообщение UI авто-текстами
-        if (dev.hydra.hydra_client.MainActivity.explicitProtocol != null) return
+        if (dev.hydra.hydra_client.HydraVpnService.sessionExplicit) return  // 0.7.6
         lastStatusMessage = m
         statusMessageCallback?.invoke(m)
     }
