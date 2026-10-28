@@ -107,8 +107,12 @@ class MainActivity : FlutterActivity() {
 
     // 0.7.3: запрос exemption от Doze battery optimization (разово)
     private fun ensureNotBatteryOptimized() {
+        Log.i("HydraUI", "ensureNotBatteryOptimized: checking exemption status")
         val pm = getSystemService(POWER_SERVICE) as PowerManager
-        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+        val isExempt = pm.isIgnoringBatteryOptimizations(packageName)
+        Log.i("HydraUI", "ensureNotBatteryOptimized: isExempt=$isExempt")
+        if (!isExempt) {
+            Log.i("HydraUI", "ensureNotBatteryOptimized: exemption NOT granted, requesting dialog")
             try {
                 val intent = android.content.Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
@@ -116,7 +120,8 @@ class MainActivity : FlutterActivity() {
                 startActivity(intent)
                 Log.i("HydraUI", "Battery optimization exemption requested")
             } catch (e: Exception) {
-                Log.w("HydraUI", "Cannot request battery exemption: ${e.message}")
+                Log.e("HydraUI", "Cannot request battery exemption: ${e.javaClass.simpleName}: ${e.message}")
+                Log.e("HydraUI", "Stack trace:", e)
                 try {
                     startActivity(android.content.Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                 } catch (_: Exception) {}

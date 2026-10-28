@@ -1,0 +1,13 @@
+Hydra Client 0.7.5 — диагностика массовой смерти WDTT + улучшенный лог батареи
+
+1. Диалог "Не оптимизировать батарею":
+   - Подробное логирование: isExempt=true/false, точное исключение в catch
+   - Вызов через Handler.postDelayed(2.5с) — activity готова
+   - Permission REQUEST_IGNORE_BATTERY_OPTIMIZATIONS в AndroidManifest
+
+2. Диагностика массовой смерти WDTT:
+   - Поле wdttSessionStartMs: запоминаем время старта WDTT-процесса
+   - При "tcp active closed": лог с session age (сколько секунд жила сессия)
+   - Цель: отличить rate limit VK TURN (все ~50с) от Doze idle-timeout (10-14с)
+
+Версия 0.7.5+75.

@@ -21,6 +21,9 @@ class MultiProtocolManager(private val context: Context) {
         private const val AIVPN_SOCKS_PORT = 1081
         private const val WDTT_SOCKS_PORT = 1082
         private const val BRIDGE_SOCKET = "hydra_tun_fd"
+        // 0.7.5: трекинг возраста сессии для диагностики массовой смерти воркеров
+        @Volatile
+        var wdttSessionStartMs: Long = -1L
     }
 
     private var aivpnProcess: Process? = null
@@ -71,6 +74,11 @@ class MultiProtocolManager(private val context: Context) {
             }
             if (line.contains("FAILED") || line.contains("PAUSED") || line.contains("Лимит попыток исчерпан") || line.contains("осталось:")) {
                 DevLog.e("WDTT-DEATH", "Raw line: $line")
+            }
+            // 0.7.5: диагностика массовой смерти — возраст сессии на момент закрытия
+            if (line.contains("tcp active closed")) {
+                val sessionAgeSec = if (wdttSessionStartMs > 0) (System.currentTimeMillis() - wdttSessionStartMs) / 1000 else -1
+                Log.w(TAG, "tcp active closed: session age = ${sessionAgeSec}s (alive workers: $wdttActive)")
             }
             if ((line.contains("PAUSED") || line.contains("Лимит попыток исчерпан")) && !wdttDeadNotified) {
                 wdttDeadNotified = true
@@ -242,6 +250,7 @@ class MultiProtocolManager(private val context: Context) {
             pb.environment()["GODEBUG"] = "netdns=go,netcgo=0"
             wdttProcess = pb.start()
             streamToLogcat(wdttProcess!!, "wdtt-client")
+            wdttSessionStartMs = System.currentTimeMillis()  // 0.7.5: диагностика
             
             // 0.5.2: null-safe проверка (защита от NPE когда stopAll() обнуляет wdttProcess параллельно)
             val proc = wdttProcess
