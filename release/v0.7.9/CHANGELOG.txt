@@ -1,0 +1,26 @@
+Hydra Client 0.7.9 — whiteList override по свежему успеху AWG/AIVPN
+
+Корень проблемы 0.7.8: проба whiteList давала false-positive на
+нерестриктивных сетях (google-TCP упал транзитно при переходе WiFi→4G),
+вызывая 45-секундный детур на WDTT, который на cellular умирал. При этом
+AWG на этой же сети работал отлично.
+
+Решение: если AWG или AIVPN успешно подключались менее 5 минут назад —
+сеть не рестриктивная, бонус whiteList (+50 для WDTT) не применяется.
+На настоящем whiteList (где AWG никогда не успевал) правило не срабатывает,
+WDTT остаётся первым кандидатом.
+
+1. ProtocolMemory.lastSuccessMs(ctx, proto):
+   - Хранит время последнего успешного подключения протокола в SharedPreferences
+   - Обновляется при каждом recordSuccess()
+
+2. SmartConnectManager — whiteList override:
+   - Если whiteList=true И (AWG успех <5мин ИЛИ AIVPN успех <5мин):
+     * whiteList=false (бонус не применяется)
+   - В логе: "whiteList overridden: recent AWG/AIVPN success (awg=Ns ago, aivpn=Ms ago) — network not restrictive"
+
+3. Эффект:
+   - На нерестриктивных сетях: AWG переподнимается на 4G без детура на WDTT
+   - На настоящем whiteList: WDTT остаётся первым (правильное поведение)
+
+Версия 0.7.9+79.

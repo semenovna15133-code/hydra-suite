@@ -26,6 +26,7 @@ object ProtocolMemory {
     }
     
     fun recordSuccess(ctx: Context, protocol: String) {
+        getPrefs(ctx).edit().putLong("last_success_" + protocol, System.currentTimeMillis()).apply()  // 0.7.9
         getPrefs(ctx).edit()
             .putInt("fail_$protocol", 0)
             .putInt("success_$protocol", getSuccessCount(ctx, protocol) + 1)
@@ -83,4 +84,8 @@ object ProtocolMemory {
         getPrefs(ctx).edit().clear().apply()
         Log.i(TAG, "All protocol memory reset")
     }
+
+    // 0.7.9: время последнего успешного подключения протокола
+    fun lastSuccessMs(ctx: android.content.Context, proto: String): Long =
+        getPrefs(ctx).getLong("last_success_" + proto, 0L)
 }

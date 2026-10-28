@@ -129,7 +129,16 @@ object SmartConnectManager {
         lastProbe = probe
         lastLatencyMs = probe.latencyMs
         
-        val whiteList = EnvironmentProbe.whiteListDetected
+        var whiteList = EnvironmentProbe.whiteListDetected
+        if (whiteList) {  // 0.7.9: сеть не рестриктивная, если AWG/AIVPN недавно успели
+            val nowMs = System.currentTimeMillis()
+            val awgOk = nowMs - ProtocolMemory.lastSuccessMs(ctx, "AmneziaWG")
+            val aiOk = nowMs - ProtocolMemory.lastSuccessMs(ctx, "AIVPN")
+            if (awgOk < 300_000L || aiOk < 300_000L) {
+                Log.w(TAG, "whiteList overridden: recent AWG/AIVPN success (awg=${awgOk/1000}s ago, aivpn=${aiOk/1000}s ago) — network not restrictive")
+                whiteList = false
+            }
+        }
         val hashCount = dev.hydra.hydra_client.SettingsStore.getHashList(ctx).size
         val preferred = dev.hydra.hydra_client.SettingsStore.getPreferredProtocol(ctx)
 
