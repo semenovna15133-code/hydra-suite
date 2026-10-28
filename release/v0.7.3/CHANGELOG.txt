@@ -1,27 +1,20 @@
-Hydra Client 0.7.3 — защита от Doze/заморозки экрана
-
-Корень проблемы 0.7.2: массовая смерть WDTT-сессий через 10-14с после
-выключения экрана (16:44, 17:08 логи). Механизм:
-  экран выкл → Doze замораживает wdtt-client → keepalive не идут
-  → VK TURN закрывает idle TCP-сессии → телефон спит, клиент не видит
-  → пробуждение → залп "active closed" → даунтайм 53с
+Hydra Client 0.7.3 — защита от Doze + фикс AUTO-режима
 
 1. WakeLock (PARTIAL_WAKE_LOCK):
-   - acquire при старте туннеля (AWG и multiprotocol)
-   - release в stop()
-   - CPU не засыпает → keepalive идут → TURN не закрывает сессии
-   - safety cap 24ч (на случай утечки)
+   - CPU не засыпает при выключении экрана
+   - WDTT-сессии не закрываются по idle-timeout TURN
+   - acquire при старте туннеля, release в stop()
 
 2. SCREEN_ON receiver:
-   - регистрируется при старте туннеля
-   - при пробуждении: мгновенная проверка processesAlive() (WDTT/AIVPN)
-     или handshakeAgeMs (AWG)
-   - если мёртв → ReconnectManager.triggerReconnect("screen-on-wake")
-   - unregister в stop()
+   - Мгновенная проверка здоровья туннеля при пробуждении
+   - Если процессы мертвы → triggerReconnect("screen-on-wake")
 
-3. Battery optimization exemption (разовый диалог):
+3. Battery optimization exemption:
    - ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS при первом запуске
-   - Fallback: ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
    - Разрешение WAKE_LOCK в AndroidManifest
+
+4. AUTO-режим сбрасывает explicitProtocol:
+   - Конец ложной блокировке failover после explicit-тапа
+   - В логе: MainActivity.explicitProtocol = null перед autoConnect()
 
 Версия 0.7.3+73.

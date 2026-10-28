@@ -11,6 +11,8 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
+import android.content.IntentFilter
 import android.util.Log
 import keyfilekt.Keyfile
 import keyfilekt.KeyFile
@@ -42,6 +44,11 @@ class HydraVpnService : VpnService() {
             private set
 
         private var lastStatsLogTs = 0L
+        // 0.7.3: защита от Doze — CPU не засыпает, WDTT-сессии не закрываются по idle
+        @Volatile
+        var wakeLock: PowerManager.WakeLock? = null
+        @Volatile
+        var screenOnReceiver: android.content.BroadcastReceiver? = null
         @Volatile var sessionBaseRx: Long = 0L
         @Volatile var sessionBaseTx: Long = 0L
         @Volatile var uapiSocketPath: String? = null
@@ -329,6 +336,8 @@ class HydraVpnService : VpnService() {
             tunnel = Tunnel.new_(cfg, protector)
             tunnel!!.start(rawFd, cfg)
             Log.i(TAG, "Tunnel started for key $keyId")
+        acquireWakeLock()
+        registerScreenOnReceiver()
         } catch (e: UnsupportedOperationException) {
             Log.e(TAG, "AWG tunnel creation failed (gomobile broken): ${e.message}")
             isRunning = false
@@ -505,6 +514,8 @@ class HydraVpnService : VpnService() {
         Log.i(TAG, "$protocol started with SOCKS5 bridge")
         setActiveProtocol(protocol)
         isHandshakeComplete = true
+        acquireWakeLock()
+        registerScreenOnReceiver()
     }
     
     private var awgWatcher: Thread? = null
@@ -570,7 +581,69 @@ class HydraVpnService : VpnService() {
     }
 
     /** Публичный метод для отключения из UI */
-    fun stop() {
+    // 0.7.3: защита от Doze/заморозки — держать CPU и реагировать на включение экрана
+    private fun acquireWakeLock() {
+        if (wakeLock != null) return
+        try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "HydraVpnService::TunnelLock"
+            ).apply {
+                setReferenceCounted(false)
+                acquire(24 * 60 * 60 * 1000L)  // 24ч safety cap
+            }
+            Log.i(TAG, "WakeLock acquired (CPU stays awake)")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire WakeLock: ${e.message}")
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+            wakeLock = null
+            Log.d(TAG, "WakeLock released")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release WakeLock: ${e.message}")
+        }
+    }
+
+    private fun registerScreenOnReceiver() {
+        if (screenOnReceiver != null) return
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: android.content.Context, intent: android.content.Intent) {
+                if (intent.action != android.content.Intent.ACTION_SCREEN_ON) return
+                if (!isRunning) return
+                Log.i(TAG, "SCREEN_ON: checking tunnel health")
+                val mp = multiProtocolManager
+                if (mp != null && !mp.processesAlive()) {
+                    Log.w(TAG, "SCREEN_ON: multiprotocol dead after wake — triggering reconnect")
+                    dev.hydra.hydra_client.tunnel.ReconnectManager.triggerReconnect("screen-on-wake")
+                }
+            }
+        }
+        val filter = IntentFilter(android.content.Intent.ACTION_SCREEN_ON)
+        registerReceiver(receiver, filter)
+        screenOnReceiver = receiver
+        Log.i(TAG, "SCREEN_ON receiver registered")
+    }
+
+    private fun unregisterScreenOnReceiver() {
+        try {
+            screenOnReceiver?.let { unregisterReceiver(it) }
+            screenOnReceiver = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister SCREEN_ON receiver: ${e.message}")
+        }
+    }
+
+        fun stop() {
+        // 0.7.3: отпускаем wakelock + receiver ДО любых других операций
+        releaseWakeLock()
+        unregisterScreenOnReceiver()
         if (isStopping) {
             Log.w(TAG, "stop() already in progress, skipping")
             return

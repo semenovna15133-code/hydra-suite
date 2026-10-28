@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.SharedPreferences
 import android.net.VpnService
+import android.os.PowerManager
+import android.provider.Settings
+import android.net.Uri
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -101,6 +104,26 @@ class MainActivity : FlutterActivity() {
         handleIncomingIntent(intent)
     }
 
+
+    // 0.7.3: запрос exemption от Doze battery optimization (разово)
+    private fun ensureNotBatteryOptimized() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            try {
+                val intent = android.content.Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+                Log.i("HydraUI", "Battery optimization exemption requested")
+            } catch (e: Exception) {
+                Log.w("HydraUI", "Cannot request battery exemption: ${e.message}")
+                try {
+                    startActivity(android.content.Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         handleIncomingIntent(intent)
@@ -108,6 +131,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        ensureNotBatteryOptimized()
         Keyfile.initRuntime()
         setupSettingsChannel(flutterEngine)
 
@@ -209,7 +233,9 @@ class MainActivity : FlutterActivity() {
                                 result.success(ok)
                             }
                         } else {
-                            // AUTO-режим: SmartConnect выбирает лучший протокол
+                            // 0.7.3: AUTO-режим — сбрасываем explicitProtocol
+                            // иначе failover будет заблокирован после предыдущего explicit-тапа
+                            MainActivity.explicitProtocol = null
                             CoroutineScope(Dispatchers.Main).launch {
                                 val provider = AWGTunnelProvider(this@MainActivity, "fi-polygon", "France · Hetzner")
                                 SmartConnectManager.registerProvider(provider)
