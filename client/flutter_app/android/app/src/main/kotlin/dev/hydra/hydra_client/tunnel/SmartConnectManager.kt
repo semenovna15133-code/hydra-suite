@@ -11,6 +11,7 @@ import tunnel.NetworkProbeResult
 
 object SmartConnectManager {
     private var lastNetworkType: String? = null
+    private var healthMonitorJob: kotlinx.coroutines.Job? = null  // 0.7.11
 
     private const val TAG = "SmartConnectManager"
     
@@ -251,6 +252,32 @@ object SmartConnectManager {
             if (success) {
                 Log.i(TAG, "✅ ${provider.name} connected successfully")
                 ProtocolMemory.recordSuccess(ctx, provider.name)
+                
+                // 0.7.11: health monitor для WDTT (как в WDTT Plus)
+                if (provider.name == "WDTT") {
+                    healthMonitorJob?.cancel()
+                    healthMonitorJob = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        var lastRx = try { HydraVpnService.readTunStats(HydraVpnService.tunName).first } catch (_: Exception) { 0L }
+                        var lastActivityMs = System.currentTimeMillis()
+                        while (isActive) {
+                            delay(10_000L)  // проверка каждые 10 секунд
+                            val now = System.currentTimeMillis()
+                            val idleMs = now - lastActivityMs
+                            
+                            // Если нет активности 75 секунд → перезапуск
+                            if (idleMs > 75_000L) {
+                                Log.w(TAG, "[HEALTH] WDTT idle for ${idleMs/1000}s — triggering failover")
+                                ReconnectManager.onWdttDead("Health monitor: idle 75s")
+                                break
+                            }
+                            
+                            // Обновляем lastActivityMs если есть трафик
+                            if (!HydraVpnService.isRunning) { Log.i(TAG, "[HEALTH] tunnel not running — monitor exit"); break }
+                            val curRx = try { HydraVpnService.readTunStats(HydraVpnService.tunName).first } catch (_: Exception) { lastRx }
+                            if (curRx > lastRx) { lastActivityMs = now; lastRx = curRx }  // 0.7.11: дельта, не накопление
+                        }
+                    }
+                }
                 activeProvider = provider
                 HealthMonitor.statusListener = { st -> ReconnectManager.onHealth(st) }
                 HealthMonitor.start()
