@@ -78,6 +78,12 @@ class MultiProtocolManager(private val context: Context) {
             // 0.7.5: диагностика массовой смерти — возраст сессии на момент закрытия
             if (line.contains("tcp active closed")) {
                 val sessionAgeSec = if (wdttSessionStartMs > 0) (System.currentTimeMillis() - wdttSessionStartMs) / 1000 else -1
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                Log.w(TAG, "[DEATH] WDTT умер: tcp active closed")
+                Log.w(TAG, "[DEATH] session age = ${sessionAgeSec}s (возраст сессии)")
+                Log.w(TAG, "[DEATH] alive workers = $wdttActive (должно быть 27)")
+                Log.w(TAG, "[DEATH] причина: NAT timeout cellular оператора (~60s) или VK TURN закрыл аллокацию")
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
                 Log.w(TAG, "tcp active closed: session age = ${sessionAgeSec}s (alive workers: $wdttActive)")
             }
             if ((line.contains("PAUSED") || line.contains("Лимит попыток исчерпан")) && !wdttDeadNotified) {

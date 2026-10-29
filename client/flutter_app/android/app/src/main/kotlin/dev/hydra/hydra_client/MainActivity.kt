@@ -567,7 +567,7 @@ class MainActivity : FlutterActivity() {
                         sb.appendLine("# device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} android=${android.os.Build.VERSION.RELEASE} sdk=${android.os.Build.VERSION.SDK_INT}")
                         sb.appendLine("# app=$packageName version=${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()}")
                         sb.appendLine("# --- logcat (own UID, last 3000 lines) ---")
-                        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-t", "3000"))
+                        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-t", "50000"))  // 0.8.0: расширенное окно лога
                         proc.inputStream.bufferedReader().use { r -> r.lineSequence().forEach { sb.appendLine(it) } }
                         proc.waitFor()
                         out.writeText(sb.toString())
@@ -593,6 +593,16 @@ class MainActivity : FlutterActivity() {
                         }
                     } catch (e: Exception) {
                         result.error("LOGS_FAIL", e.message, null)
+                    }
+                }
+                "clearLogcat" -> {
+                    // 0.8.0: очистка ring buffer перед серией тестов
+                    try {
+                        Runtime.getRuntime().exec(arrayOf("logcat", "-c"))
+                        Log.i("HydraUI", "Logcat buffer cleared")
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("CLEAR_FAIL", e.message, null)
                     }
                 }
                 "installApk" -> {

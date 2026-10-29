@@ -95,7 +95,10 @@ object SmartConnectManager {
         context = ctx
         keyId = kid
         dev.hydra.hydra_client.HydraVpnService.sessionExplicit = false  // 0.7.6: AUTO-путь
-        Log.i(TAG, "Starting Smart Connect...")
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
+        Log.i(TAG, "[MODE] AUTO — Smart Connect ищет оптимальный протокол")
+        Log.i(TAG, "[LOGIC] probe → score → pick → connect → monitor → failover")
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
         
         // Парсим keyfile и строим провайдеры динамически
         val keysDir = java.io.File(ctx.filesDir, "keys")
@@ -127,6 +130,7 @@ object SmartConnectManager {
         // Пробегаем по всем endpoint'ам для скоринга
         val firstEndpoint = kf.peers.firstOrNull()?.endpoint ?: "31.77.202.131:51820"
         val probe = EnvironmentProbe.probe(ctx, firstEndpoint)
+        Log.i(TAG, "[PROBE] UDP=${probe.udpOk}, TCP=${probe.tcpOk}, VK=${probe.vkApiOk}, DPI=${probe.dpiDetected}, latency=${probe.latencyMs}ms, whiteList=${EnvironmentProbe.whiteListDetected}")
         lastProbe = probe
         lastLatencyMs = probe.latencyMs
         
@@ -230,6 +234,11 @@ object SmartConnectManager {
             val wlNow = EnvironmentProbe.whiteListDetected
             val curProto = dev.hydra.hydra_client.HydraVpnService.activeProviderName
             if (wlNow && curProto in listOf("AIVPN", "AmneziaWG") && dev.hydra.hydra_client.HydraVpnService.isRunning) {
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                Log.w(TAG, "[FAILOVER] текущий протокол $curProto мёртв")
+                Log.w(TAG, "[FAILOVER] причина: whiteList detected, $curProto не работает на этой сети")
+                Log.w(TAG, "[FAILOVER] переходим на WDTT (единственный протокол для whiteList)")
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
                 Log.w(TAG, "Network changed to whiteList with $curProto active — forcing failover to WDTT")
                 activeProvider?.disconnect()
                 activeProvider = null
@@ -433,10 +442,20 @@ object SmartConnectManager {
                         dev.hydra.hydra_client.HydraVpnService.sessionExplicit = false
                         autoConnect(ctx, kid)
                     } else {
+                        Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                        Log.w(TAG, "[ROAM] смена сети в explicit mode")
+                        Log.w(TAG, "[ROAM] текущий протокол: $expl, туннель мёртв (нет трафика)")
+                        Log.w(TAG, "[ROAM] решение: переподключаем ТОЛЬКО $expl (no failover by contract)")
+                        Log.w(TAG, "═══════════════════════════════════════════════════════════")
                         Log.w(TAG, "Network changed in explicit mode — tunnel stale, reconnecting $expl")
                         connectExplicit(ctx, kid, expl)
                     }
                 } else {
+                    Log.i(TAG, "═══════════════════════════════════════════════════════════")
+                    Log.i(TAG, "[ROAM] смена сети в explicit mode")
+                    Log.i(TAG, "[ROAM] текущий протокол: $expl, туннель жив (есть трафик)")
+                    Log.i(TAG, "[ROAM] решение: оставляем как есть (no failover by contract)")
+                    Log.i(TAG, "═══════════════════════════════════════════════════════════")
                     Log.i(TAG, "Network changed in explicit mode — tunnel alive, kept")
                 }
                 return@launch
@@ -490,6 +509,11 @@ object SmartConnectManager {
             val newWhiteList = EnvironmentProbe.whiteListDetected
             val currentProto = dev.hydra.hydra_client.HydraVpnService.activeProviderName
             if (newWhiteList && currentProto in listOf("AIVPN", "AmneziaWG")) {
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                Log.w(TAG, "[FAILOVER] текущий протокол $currentProto мёртв")
+                Log.w(TAG, "[FAILOVER] причина: whiteList detected в explicit mode")
+                Log.w(TAG, "[FAILOVER] переходим на WDTT (единственный протокол для whiteList)")
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
                 Log.w(TAG, "Network changed to whiteList — forcing failover from $currentProto to WDTT")
                 activeProvider?.disconnect()
                 activeProvider = null
@@ -513,7 +537,10 @@ object SmartConnectManager {
         connectMutex.withLock {
             context = ctx
             keyId = kid
-            Log.i(TAG, "=== Explicit connect: $protocol (no SmartConnect scoring, no failover) ===")
+            Log.i(TAG, "═══════════════════════════════════════════════════════════")
+            Log.i(TAG, "[MODE] EXPLICIT — пользователь выбрал протокол $protocol")
+            Log.i(TAG, "[CONTRACT] Только $protocol, без failover на другие протоколы")
+            Log.i(TAG, "═══════════════════════════════════════════════════════════")
             supervisedRetryJob?.cancel()
             dev.hydra.hydra_client.HydraVpnService.sessionExplicit = true  // 0.7.6  // 0.7.4: фоновые ретраи не мешают явному тапу
             val keysDir = java.io.File(ctx.filesDir, "keys")
@@ -534,6 +561,7 @@ object SmartConnectManager {
                 "wdtt" -> WDTTTunnelProvider(ctx, peer.serverId, peer.label, peer)
                 else -> return@withLock false
             }
+            Log.i(TAG, "[EVIDENCE] проверяем ${provider.name}: handshake + traffic + health")
             val ok = tryConnectWithEvidence(provider, kid)
             if (ok) {
                 Log.i(TAG, "✅ explicit ${provider.name} connected")
