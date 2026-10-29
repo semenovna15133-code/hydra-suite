@@ -1,0 +1,14 @@
+Hydra Client 0.8.4 — Максимально расширенное логирование
+
+Новые маркеры:
+- [CHANNEL] startTunnel — каждый тап в UI
+- [EVIDENCE] — проверка каждого протокола (timeout + критерии)
+- [CONNECT] WDTT/AWG — старт с параметрами
+- [MODE] EXPLICIT/AUTO + [CONTRACT] для explicit
+- [PROBE] UDP/TCP/VK/DPI/whiteList
+- [FAILOVER] причина + переход
+- [ROAM] смена сети + решение
+- [EXPLICIT-DEATH] честная ошибка в explicit-режиме
+- [DEATH] смерть туннеля (session age, причина)
+
+Версия 0.8.4+93.

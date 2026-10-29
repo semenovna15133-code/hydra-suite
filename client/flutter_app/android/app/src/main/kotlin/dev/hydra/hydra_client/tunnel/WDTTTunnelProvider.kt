@@ -33,6 +33,12 @@ class WDTTTunnelProvider(
     }
 
     override fun connect(keyId: String): Boolean {
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
+        Log.i(TAG, "[CONNECT] WDTT стартует")
+        Log.i(TAG, "[CONNECT] endpoint=${peer.endpoint}, password=${if (peer.password.isNotEmpty()) "есть" else "ПУСТО"}")
+        Log.i(TAG, "[CONNECT] workers=${dev.hydra.hydra_client.SettingsStore.resolveWorkers(context)}")
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
+        
         if (peer.password.isEmpty()) {
             Log.e(TAG, "WDTT password is empty")
             return false

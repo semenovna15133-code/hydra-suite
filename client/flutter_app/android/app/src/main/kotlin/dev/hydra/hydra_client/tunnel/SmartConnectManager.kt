@@ -309,6 +309,10 @@ object SmartConnectManager {
      * Таймауты: AWG 15с, AIVPN 10с, WDTT 12с.
      */
     private suspend fun tryConnectWithEvidence(provider: TunnelProvider, kid: String): Boolean {
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
+        Log.i(TAG, "[EVIDENCE] начинаем проверку ${provider.name}")
+        Log.i(TAG, "[EVIDENCE] критерии: handshake + traffic + health")
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
         // 0.5.7: AWG timeout 15с (сервер иногда отвечает за 10-13с)
         val timeoutMs = when (provider.name) {
             "AmneziaWG" -> 15_000L
@@ -437,19 +441,14 @@ object SmartConnectManager {
                         if (ep3.isNotEmpty()) EnvironmentProbe.probe(ctx, ep3)
                         wl2 = EnvironmentProbe.whiteListDetected
                     } catch (_: Exception) {}
-                    if (wl2 && expl in listOf("AIVPN", "AmneziaWG")) {
-                        Log.w(TAG, "Network changed in explicit mode: whiteList detected — $expl cannot work here; honest switch to WDTT via autoConnect")
-                        dev.hydra.hydra_client.HydraVpnService.sessionExplicit = false
-                        autoConnect(ctx, kid)
-                    } else {
-                        Log.w(TAG, "═══════════════════════════════════════════════════════════")
-                        Log.w(TAG, "[ROAM] смена сети в explicit mode")
-                        Log.w(TAG, "[ROAM] текущий протокол: $expl, туннель мёртв (нет трафика)")
-                        Log.w(TAG, "[ROAM] решение: переподключаем ТОЛЬКО $expl (no failover by contract)")
-                        Log.w(TAG, "═══════════════════════════════════════════════════════════")
-                        Log.w(TAG, "Network changed in explicit mode — tunnel stale, reconnecting $expl")
-                        connectExplicit(ctx, kid, expl)
-                    }
+                    // 0.8.3: чистая сепарация explicit — никогда не переключаемся на другой протокол
+                    Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                    Log.w(TAG, "[ROAM] смена сети в explicit mode")
+                    Log.w(TAG, "[ROAM] текущий протокол: $expl, туннель мёртв (нет трафика)")
+                    Log.w(TAG, "[ROAM] решение: переподключаем ТОЛЬКО $expl (no failover by contract)")
+                    Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                    Log.w(TAG, "Network changed in explicit mode — tunnel stale, reconnecting $expl")
+                    connectExplicit(ctx, kid, expl)
                 } else {
                     Log.i(TAG, "═══════════════════════════════════════════════════════════")
                     Log.i(TAG, "[ROAM] смена сети в explicit mode")

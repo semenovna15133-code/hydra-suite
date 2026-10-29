@@ -245,6 +245,10 @@ class MainActivity : FlutterActivity() {
                 "startTunnel" -> {
                     val keyId = call.argument<String>("keyId")
                     val explicitProtocol = call.argument<String>("protocol")
+                    Log.i("HydraUI", "═══════════════════════════════════════════════════════════")
+                    Log.i("HydraUI", "[CHANNEL] startTunnel вызван из UI")
+                    Log.i("HydraUI", "[CHANNEL] keyId=$keyId, explicitProtocol=$explicitProtocol")
+                    Log.i("HydraUI", "═══════════════════════════════════════════════════════════")
                     if (keyId == null) {
                         result.error("INVALID_ARGUMENT", "keyId required", null)
                         return@setMethodCallHandler

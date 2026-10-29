@@ -38,6 +38,10 @@ class AWGTunnelProvider(
     }
     
     override fun connect(keyId: String): Boolean {
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
+        Log.i(TAG, "[CONNECT] AWG стартует")
+        Log.i(TAG, "[CONNECT] endpoint=${peer?.endpoint ?: "нет peer"}, AWG_DISABLED=$AWG_DISABLED")
+        Log.i(TAG, "═══════════════════════════════════════════════════════════")
         Log.i(TAG, "=== AWGTunnelProvider.connect() START ===")
         Log.i(TAG, "AWG_DISABLED=$AWG_DISABLED")
         
