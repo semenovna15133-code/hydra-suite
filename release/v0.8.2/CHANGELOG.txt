@@ -1,0 +1,20 @@
+Hydra Client 0.8.2 — Чистая сепарация explicit/AUTO + корректные приоритеты
+
+Критические фиксы:
+
+1. Чистая сепарация explicit-режима (Вариант A):
+   - Удалён legacy код 0.7.8 который тихо переключался на WDTT при whiteList
+   - Теперь explicit = ТОЛЬКО выбранный протокол, без failover на другие
+   - Если протокол мёртв на новой сети — ретраим только его (честная ошибка)
+
+2. Корректное определение cellular сети:
+   - EnvironmentProbe.isCellular() теперь возвращает false когда WiFi активен
+   - Раньше: WiFi активен → `hasTransport(CELLULAR)=true` → whiteList=true → WDTT получал бонус +50
+   - Теперь: WiFi активен → isCellular()=false → whiteList=false → AWG/AIVPN имеют приоритет на WiFi
+
+Ожидаемое поведение:
+- Explicit AWG на WiFi → 4G: ретрай только AWG (не тихий переход на WDTT)
+- AUTO на WiFi: AWG побеждает WDTT (нет ложного whiteList бонуса)
+- AUTO на 4G (whiteList): WDTT побеждает (правильный whiteList бонус +50)
+
+Версия 0.8.2+89.
