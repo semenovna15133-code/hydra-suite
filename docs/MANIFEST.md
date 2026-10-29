@@ -1,4 +1,4 @@
-# HYDRA SUITE — МАНИФЕСТ v5.1 (29.10.2026)
+# HYDRA SUITE — МАНИФЕСТ v5.2 (29.10.2026)
 Источник истины по продуктовой логике. Заменяет v4.1 (25.09.2026). Дополнение: Приложение v5.1 (29.10.2026) — клиентский цикл 0.7.x.
 Детали реализации панели — docs/PASSPORT.md. При конфликте: приоритет
 у МАНИФЕСТа по продуктовой логике, у ПАССПОРТа по реализации панели.
@@ -338,3 +338,48 @@ whiteList-бонус WDTT (+50); сон экрана не убивает тун�
   известные проблемы, диагностика, статус roadmap.
 - v5.0 (25.10.2026): bridge, evidence, split-tunnel статус, ADR R-20…R-23,
   roadmap 3e.
+
+---
+
+# ПРИЛОЖЕНИЕ A.7 (29.10.2026) — WDTT на cellular: NAT timeout и план решения
+
+## A.7.1 Критическое открытие
+
+**Проблема:** WDTT на cellular умирает через ~60 секунд: `tcp active closed: session age = 58-60s`, все 27 воркеров одновременно. На WiFi сессии живут 235+ секунд (лог 21:22:08: `session age = 235s`).
+
+**Корень:** наш wdtt-client идёт через **TURN TCP** (`[CONNECTION] TRY tcp`, `[СЕССИЯ #N] Relay: ... через TURN TCP`). TCP-аллокации на мобильных сетях живут меньше; клиент не перебирает транспорты.
+
+**Почему WDTT Plus работает на той же сети и том же сервере** (анализ репозитория Ivan4537/WDTT-Plus, go_client):
+- **keepaliveInterval = 15s** (DTLS keepalive), keepalivePongTimeout = 75s
+- **unansweredUserTrafficTimeout = 45s** — рестарт воркера если трафик без ответа
+- **Мульти-транспорт:** перебор TURN UDP / TCP / TLS (`turn_endpoint.go`), для белых списков — TLS-first с белым SNI (`turns:`)
+- **Wake-probe при Doze:** DEVICE_SLEEP/WAKE команды, `workerWakeProbeTimeout = 12s`, per-worker проверка после пробуждения
+- **Замена канала:** 2+ failed delivery probes → замена одного воркера, не всей сессии
+- **WRAP RTP AEAD** поверх DTLS (маскировка под медиатрафик) — у нас тоже есть
+
+## A.7.2 Временное решение (0.7.11, клиентское)
+
+Health monitor в SmartConnectManager: дельта rx каждые 10с; нет прироста 75с → failover. Компенсирует, но не лечит (переподнятие каждые ~60с).
+
+## A.7.3 Постоянное решение
+
+**Вариант A (приоритет 1):** убрать `-turn-stream-first` из запуска wdtt-client → клиент начнёт пробовать TURN UDP первым (как апстрим по умолчанию).
+**Вариант B (приоритет 2):** форк/сборка нашего wdtt-client с параметрами апстрима: keepalive 15s, unanswered-traffic 45s, wake-probe, мульти-транспорт (по образцу go_client WDTT Plus).
+**Вариант C:** TURN TLS с белым SNI для самых жёстких сетей (как у апстрима).
+
+## A.7.4 Таблица отличий
+
+| Параметр | Наш клиент | апстрим (форк) |
+|---|---|---|
+| TURN транспорт | только TCP | UDP / TCP / TLS перебор |
+| Keepalive | есть (сервер отвечает) | 15s + pong timeout 75s |
+| Unanswered traffic restart | нет | 45s |
+| Wake-probe при Doze | нет | 12s, per-worker |
+| Замена мёртвого воркера | нет | 2+ failed probes |
+| Сессия на cellular | ~60с | стабильно |
+
+## A.7.5 Roadmap
+
+1. 0.7.11: health monitor (временное) [текущий]
+2. 0.8.0: убрать `-turn-stream-first` → тест cellular
+3. 0.9.0: сборка клиента с keepalive/wake-probe параметрами апстрима
