@@ -1,0 +1,10 @@
+Hydra Client 0.8.1 — Подготовка к обработке explicit process death
+
+Изменения:
+- Расширенное логирование с маркерами [MODE]/[PROBE]/[FAILOVER]/[ROAM]/[DEATH]
+- Health monitor для WDTT (проверка каждые 10с, failover через 75с idle)
+- Method channel clearLogcat для очистки ring buffer перед тестами
+
+Следующий патч (0.8.2): честная ошибка при process death в explicit-режиме
+
+Версия 0.8.1+87.
