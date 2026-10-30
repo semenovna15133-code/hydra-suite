@@ -140,9 +140,10 @@ object SmartConnectManager {
             val nowMs = System.currentTimeMillis()
             val awgLast = ProtocolMemory.lastSuccessMs(ctx, "AmneziaWG")
             val aiLast = ProtocolMemory.lastSuccessMs(ctx, "AIVPN")
-            val awgOk = nowMs - awgLast
-            val aiOk = nowMs - aiLast
-            Log.i(TAG, "whiteList check: nowMs=$nowMs, awgLast=$awgLast, aiLast=$aiLast, awgOk=${awgOk/1000}s, aiOk=${aiOk/1000}s")  // 0.7.10 debug
+            // 0.8.6: защита от lastSuccess=0 (56 лет ago) — проверяем что протокол реально подключался
+            val awgOk = if (awgLast > 0L) nowMs - awgLast else Long.MAX_VALUE
+            val aiOk  = if (aiLast  > 0L) nowMs - aiLast  else Long.MAX_VALUE
+            Log.i(TAG, "whiteList check: nowMs=$nowMs, awgLast=$awgLast, aiLast=$aiLast, awgOk=${if(awgOk==Long.MAX_VALUE) "never" else "${awgOk/1000}s"}, aiOk=${if(aiOk==Long.MAX_VALUE) "never" else "${aiOk/1000}s"}")
             if (awgOk < 300_000L || aiOk < 300_000L) {
                 Log.w(TAG, "whiteList overridden: recent AWG/AIVPN success (awg=${awgOk/1000}s ago, aivpn=${aiOk/1000}s ago) — network not restrictive")
                 whiteList = false
@@ -315,7 +316,7 @@ object SmartConnectManager {
         Log.i(TAG, "═══════════════════════════════════════════════════════════")
         // 0.5.7: AWG timeout 15с (сервер иногда отвечает за 10-13с)
         val timeoutMs = when (provider.name) {
-            "AmneziaWG" -> 15_000L
+            "AmneziaWG" -> 25_000L  // 0.8.6: увеличено с 15с (сервер иногда отвечает за 10-20с)
             "AIVPN" -> 10_000L
             "WDTT" -> 20_000L
             else -> 15_000L

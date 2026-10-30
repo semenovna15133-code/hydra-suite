@@ -18,13 +18,15 @@ object EnvironmentProbe {
     private fun isCellular(context: Context): Boolean {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return false
-            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-            // 0.8.2: если WiFi активен — это НЕ cellular сеть (whiteList не применяется)
-            if (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) {
-                false
-            } else {
-                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+            // 0.8.6: проверяем ВСЕ активные сети (Samsung dual-connect: WiFi + cellular одновременно)
+            val networks = cm.allNetworks
+            val hasWifi = networks.any { n ->
+                cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
             }
+            if (hasWifi) return false  // WiFi активен = не cellular сеть
+            
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
         } catch (e: SecurityException) {
             Log.w(TAG, "No ACCESS_NETWORK_STATE permission, assuming not cellular")
             false
