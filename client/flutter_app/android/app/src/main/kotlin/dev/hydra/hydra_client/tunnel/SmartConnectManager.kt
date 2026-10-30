@@ -350,8 +350,11 @@ object SmartConnectManager {
             val activeName = dev.hydra.hydra_client.HydraVpnService.activeProviderName
             val handshakeSet = dev.hydra.hydra_client.HydraVpnService.isHandshakeComplete
             val alive = when (provider.name) {
-                "WDTT" -> wdttSocksAlive() || hbHasBytes()
-                "AIVPN" -> (handshakeSet || hbHasBytes())
+                // 0.8.7: evidence-gate для bridge-протоколов
+                // hbHasRx() = только rx > 0 (реальный входящий трафик от сервера)
+                // tx от bridge (SYN-попытки) не считается evidence
+                "WDTT" -> wdttSocksAlive() || hbHasRx()
+                "AIVPN" -> (handshakeSet && hbHasRx()) || hbHasRx()
                 else -> handshakeSet && activeName == provider.name
             }
             val handshakeOk = alive
@@ -372,6 +375,19 @@ object SmartConnectManager {
         return false
     }
     
+    // 0.8.7: только rx > 0 (реальный трафик от сервера, не SYN от bridge)
+    private fun hbHasRx(): Boolean {
+        return try {
+            val statsFile = java.io.File(context?.filesDir ?: return false, "hb_stats.json")
+            if (!statsFile.exists()) return false
+            val json = org.json.JSONObject(statsFile.readText())
+            val rx = json.optLong("rx_bytes", 0L)
+            rx > 0L
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun hbHasBytes(): Boolean {
         return try {
             val inst = dev.hydra.hydra_client.HydraVpnService.instance ?: return false

@@ -1,0 +1,14 @@
+Hydra Client 0.8.7 — Критический фикс AIVPN «лживое connected»
+
+Фикс 1: Evidence-gate для bridge-протоколов (AIVPN/WDTT)
+Теперь требуется rx > 0 (реальный входящий трафик от сервера),
+а не rx > 0 || tx > 0. SYN-попытки hydra-bridge к ещё не поднятому
+SOCKS5-порту больше не считаются evidence. Конец «лживому connected»
+когда UI зелёный, но трафика нет. Новая функция hbHasRx() читает
+только rx_bytes из hb_stats.json.
+
+Известное ограничение: warning «Failed to write admin token to /tmp/...»
+остаётся (SELinux блокирует /tmp для untrusted_app) — некритично,
+клиент продолжает работу без admin API.
+
+Версия 0.8.7+96.
