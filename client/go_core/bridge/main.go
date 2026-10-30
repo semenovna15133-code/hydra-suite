@@ -230,6 +230,34 @@ func handleTCP(pkt []byte, ihl int, srcIP, dstIP net.IP) {
 	}
 }
 
+func dialSocksWithHealth(dst string) (net.Conn, error) {
+	// 0.8.6: health check — проверяем что бэкенд жив перед dial
+	// Делаем пробный TCP-connect с timeout 2с, retry 3 раза с backoff 500/1000/1500ms
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		c, err := net.DialTimeout("tcp", socksAddr, 2*time.Second)
+		if err == nil {
+			c.Close()
+			lastErr = nil
+			break
+		}
+		lastErr = err
+		if attempt < 2 {
+			time.Sleep(time.Duration((attempt+1)*500) * time.Millisecond)
+		}
+	}
+	if lastErr != nil {
+		log.Printf("[hb] backend health check failed after 3 attempts: %v", lastErr)
+		return nil, fmt.Errorf("backend unreachable: %w", lastErr)
+	}
+	// Бэкенд жив — делаем реальный dial через SOCKS5 proxy
+	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
+	if err != nil {
+		return nil, err
+	}
+	return d.Dial("tcp", dst)
+}
+
 func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, theirSeq uint32) {
 	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
 	if err != nil {
@@ -360,11 +388,7 @@ func handleDNS(pkt []byte, ihl int, srcIP, dstIP net.IP) {
 	dstPort := binary.BigEndian.Uint16(pkt[ihl+2 : ihl+4])
 	payload := pkt[ihl+8:]
 
-	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
-	if err != nil {
-		return
-	}
-	conn, err := d.Dial("tcp", net.JoinHostPort(dstIP.String(), "53"))
+	conn, err := dialSocksWithHealth(net.JoinHostPort(dstIP.String(), "53"))  // 0.8.6
 	if err != nil {
 		return
 	}
