@@ -259,13 +259,8 @@ func dialSocksWithHealth(dst string) (net.Conn, error) {
 }
 
 func newTCPConn(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16, theirSeq uint32) {
-	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
-	if err != nil {
-		log.Printf("[hb] socks error: %v", err)
-		return
-	}
-	dst := net.JoinHostPort(dstIP.String(), fmt.Sprint(dstPort))
-	socks, err := d.Dial("tcp", dst)
+		dst := net.JoinHostPort(dstIP.String(), fmt.Sprint(dstPort))
+	socks, err := dialSocksWithHealth(dst)  // 0.8.6: health check перед dial
 	if err != nil {
 		log.Printf("[hb] socks dial %s: %v", dst, err)
 		return
