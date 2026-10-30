@@ -1,0 +1,13 @@
+Hydra Client 0.8.6 — Закрытие блокеров для альфа-теста
+
+Критические фиксы:
+1. whiteList на WiFi (Samsung dual-connect): теперь проверяем ВСЕ активные сети,
+   а не только activeNetwork. Конец ложным «белый список» на WiFi.
+2. lastSuccessMs=0 защита: больше не срабатывает условие «56 лет ago»
+   для протоколов, которые ни разу не подключались.
+3. SOCKS5 health check (Go bridge): перед dial делается пробный TCP-connect
+   (timeout 2с, retry 3x с backoff 500/1000/1500ms). Конец спаму «connection refused»
+   когда AIVPN/WDTT бэкенд уже умер (особенно на cellular).
+4. AWG evidence timeout увеличен с 15с до 25с (сервер иногда отвечает за 10-20с).
+
+Версия 0.8.6+95. Готов к альфа-тесту.
