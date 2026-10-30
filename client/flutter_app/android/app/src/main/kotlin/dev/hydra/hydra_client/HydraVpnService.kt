@@ -375,6 +375,8 @@ class HydraVpnService : VpnService() {
 
     
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var lastNetworkChangeMs = 0L
+    private val networkChangeCooldownMs = 5000L  // 0.8.5: дедупликация roam-триггеров
 
     private fun registerNetworkWatcher() {
         if (networkCallback != null) return
@@ -382,11 +384,23 @@ class HydraVpnService : VpnService() {
         val cb = object : android.net.ConnectivityManager.NetworkCallback() {
             private var first = true
             override fun onAvailable(network: android.net.Network) {
-                if (first) { first = false; return } // игнорируем вызов при регистрации
+                if (first) { first = false; return }
+                val now = System.currentTimeMillis()
+                if (now - lastNetworkChangeMs < networkChangeCooldownMs) {
+                    Log.d(TAG, "Network available: $network (cooldown, skip)")
+                    return
+                }
+                lastNetworkChangeMs = now
                 Log.i(TAG, "Network available: $network")
                 dev.hydra.hydra_client.tunnel.SmartConnectManager.onNetworkChanged()
             }
             override fun onLost(network: android.net.Network) {
+                val now = System.currentTimeMillis()
+                if (now - lastNetworkChangeMs < networkChangeCooldownMs) {
+                    Log.d(TAG, "Network lost: $network (cooldown, skip)")
+                    return
+                }
+                lastNetworkChangeMs = now
                 Log.i(TAG, "Network lost: $network")
                 dev.hydra.hydra_client.tunnel.SmartConnectManager.onNetworkChanged()
             }

@@ -239,7 +239,7 @@ object ReconnectManager {
 
         val ok = withContext(Dispatchers.IO) {
             try {
-                dev.hydra.hydra_client.HydraVpnService.restartTunnel()
+                false  // 0.8.5: restartTunnel удалён — для WDTT/AIVPN используем failover
             } catch (e: Exception) {
                 Log.e(TAG, "Restart failed", e)
                 false

@@ -1,0 +1,11 @@
+Hydra Client 0.8.5 — Полировка перед альфа-тестом
+
+Три фикса:
+1. UI: метрики «N/M потоков» показываются ТОЛЬКО когда активен WDTT
+   (раньше карточка AWG показывала WDTT-воркеры)
+2. NetworkCallback cooldown 5с — дедупликация roam-триггеров
+   (раньше onLost+onAvailable при смене сети давали двойной onNetworkChanged)
+3. Legacy cleanup: вызов restartTunnel() удалён из ReconnectManager
+   (мёртвый код эпохи AWG-only, спамил «restartTunnel ignored (not AWG)»)
+
+Версия 0.8.5+94. Следующая: 0.9.0 — телеметрия для альфа-теста.
