@@ -489,7 +489,7 @@ class HydraVpnService : VpnService() {
             val json = String(android.util.Base64.decode(payload, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))
             org.json.JSONObject(json).optString("i", "10.0.0.2/32")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to decode client IP from aivpn key: ${e.message}")
+            Log.e(TAG, "AIVPN-KEY: секция aivpn в ключе пустая/битая (${e.message}) — сервер проигнорирует handshake. Перевыпусти ключ в панели с AIVPN-биндингом")
             "10.0.0.2/32"
         }
         val clientIp = clientIpRaw.substringBefore("/")

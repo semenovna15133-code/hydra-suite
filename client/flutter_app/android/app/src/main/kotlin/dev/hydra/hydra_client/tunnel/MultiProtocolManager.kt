@@ -247,7 +247,6 @@ class MultiProtocolManager(private val context: Context) {
                 "-n", workers.toString(),
                 "-captcha-mode", "auto",
                 "-vkcalls-preflight",
-                "-turn-stream-first",
                 "-device-id", android.os.Build.MODEL.take(30)
             )
             Log.i(TAG, "WDTT full cmd: ${args.joinToString(" ")}")

@@ -437,14 +437,18 @@ object SmartConnectManager {
                     connectExplicit(ctx, kid, expl)
                     return@launch
                 }
-                val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-                val tx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
-                val hb0 = readHbStats()  // 0.7.8: точка отсчёта
+                // 0.8.8: живость = пер-протокольное payload-доказательство, НЕ tx-счётчики.
+                // Раньше tx рос от контрольных повторов самого мёртвого протокола
+                // (AWG handshake-ретраи, aivpn TLS-ретраи, bridge SYN) — туннель-зомби
+                // жил 20+ минут. Теперь: AWG = возраст UAPI-handshake; bridge = hb rx дельта.
+                val hb0 = readHbStats()
                 kotlinx.coroutines.delay(6000)
-                val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-                val tx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
                 val hb1 = readHbStats()
-                val alive = (rx1 > rx0) || (tx1 > tx0) || (hb0 != null && hb1 != null && (hb1.first > hb0.first || hb1.second > hb0.second))  // 0.7.8: дельта, не накопление
+                val alive = when (expl) {
+                    "AmneziaWG" -> HydraVpnService.isHandshakeComplete &&
+                            HydraVpnService.handshakeAgeMs() in 0L..180_000L
+                    else -> (hb0 != null && hb1 != null && hb1.first > hb0.first)  // только payload rx от сервера
+                }
                 if (!alive) {
                     activeProvider?.disconnect()
                     activeProvider = null
@@ -481,38 +485,29 @@ object SmartConnectManager {
                 Log.i(TAG, "Network changed (idle): penalties cleared")
                 return@launch
             }
-            // roam-aware: сначала 6 сек наблюдаем rx/tx — живой туннель не трогаем
-            val rx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-            val tx0 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
+            // 0.8.8: roam-aware живость по пер-протокольным источникам payload (НЕ tx)
+            // Раньше tx рос от handshake-ретраев AWG / TLS-ретраев aivpn / SYN bridge —
+            // мёртвый туннель объявлялся "жив" на 20+ минут. Теперь:
+            //   AWG         = UAPI handshake age < 180с
+            //   bridge      = дельта hb rx (реальный трафик от сервера)
+            val hb0 = readHbStats()
             kotlinx.coroutines.delay(6000)
-            val rx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).first
-            val tx1 = HydraVpnService.readTunStats(HydraVpnService.tunName).second
-            // 0.4.9: idle-aware живость — не только rx, но и tx/hb/watchdog (конец ложных "Roam survived" в простое)
-            val hb = readHbStats()
-            val hbHasBytes = hb != null && (hb.first > 0L || hb.second > 0L)
-            val aliveByDelta = (rx1 > rx0) || (tx1 > tx0) || hbHasBytes
-            if (!aliveByDelta) {
-                Log.w(TAG, "Roam stale: no rx/tx/hb delta (rx=$rx0->$rx1, tx=$tx0->$tx1, hb=$hb) — triggering reconnect")
+            val hb1 = readHbStats()
+            val currentProtoAlive = dev.hydra.hydra_client.HydraVpnService.activeProviderName
+            val aliveByProto = when (currentProtoAlive) {
+                "AmneziaWG" -> HydraVpnService.isHandshakeComplete &&
+                        HydraVpnService.handshakeAgeMs() in 0L..180_000L
+                else -> (hb0 != null && hb1 != null && hb1.first > hb0.first)
+            }
+            if (!aliveByProto) {
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
+                Log.w(TAG, "[ROAM] смена сети в AUTO, протокол $currentProtoAlive, payload=0 — туннель мёртв")
+                Log.w(TAG, "[ROAM] решение: triggerReconnect(roam-stale)")
+                Log.w(TAG, "═══════════════════════════════════════════════════════════")
                 dev.hydra.hydra_client.tunnel.ReconnectManager.triggerReconnect("roam-stale")
                 return@launch
             }
-            if (HydraVpnService.isRunning && activeProvider?.isRunning() == true && rx1 > rx0) {
-                Log.i(TAG, "Roam survived: rx $rx0 -> $rx1 — tunnel kept")
-                return@launch
-            }
-            // 0.5.6: для multiprotocol проверяем hb_stats.json (трафик через hydra-bridge, не TUN)
-            val hbFile = dev.hydra.hydra_client.HydraVpnService.instance?.filesDir?.let { java.io.File(it, "hb_stats.json") }
-            val hbBytes = if (hbFile?.exists() == true) {
-                try {
-                    val j = org.json.JSONObject(hbFile.readText())
-                    j.optLong("rx_bytes") + j.optLong("tx_bytes")
-                } catch (_: Exception) { 0L }
-            } else 0L
-            
-            if (hbBytes > 0L) {
-                Log.i(TAG, "Network changed but hb_stats shows traffic ($hbBytes bytes) — tunnel alive")
-                return@launch
-            }
+            Log.i(TAG, "Roam survived: $currentProtoAlive alive (handshake/payload confirmed) — tunnel kept")
             
             // 0.7.2: whiteList-aware failover
             // Если новая сеть = whiteList и текущий протокол = AIVPN/AWG -> немедленный failover на WDTT
@@ -539,7 +534,7 @@ object SmartConnectManager {
                 return@launch
             }
             
-            Log.w(TAG, "Network changed and tunnel stalled (rx frozen at $rx0, hb=$hbBytes) — reconnect with fresh probe")
+
             activeProvider?.disconnect()
             activeProvider = null
             HealthMonitor.stop()
